@@ -103,7 +103,7 @@ def score(us, crude, rupee, gap=None):
     label = ("BULLISH" if total >= 1.5 else "MILDLY BULLISH" if total >= 0.5 else
              "BEARISH" if total <= -1.5 else "MILDLY BEARISH" if total <= -0.5 else "FLAT / NEUTRAL")
     pos, neg = [k for k, v in parts.items() if v > 0], [k for k, v in parts.items() if v < 0]
-    why = "; ".join(x for x in ("supportive: " + ", ".join(pos) if pos else "", "negative: " + ", ".join(neg) if neg else "") if x) or "no strong cue"
+    why = "\n".join(x for x in ("Supportive: " + ", ".join(pos) if pos else "", "Negative: " + ", ".join(neg) if neg else "") if x) or "No strong cue either way"
     return label, why
 
 
@@ -114,38 +114,38 @@ def pct(q):
 def brief(s, us, tag=""):
     crude = pct(s["crude"]) if s["crude"] and fresh(s["crude"]) else None
     rupee = pct(s["usdinr"]) if s["usdinr"] and fresh(s["usdinr"]) else None
-    lines = [f"{tag}Pre-market brief {now_ist():%d %b, %H:%M}"]
-    if us:
-        lines.append("US last night: " + ", ".join(f"{k} {v:+.1f}%" for k, v in us.items()))
-    else:
-        lines.append("US markets: not connected")
+    lines = [f"{tag}PRE-MARKET BRIEF  {now_ist():%d %b, %H:%M}", "", "US last night"]
+    lines.append(" | ".join(f"{k} {v:+.1f}%" for k, v in us.items()) if us else "Not connected")
     if s["crude"]:
-        lines.append(f"Crude oil (MCX): Rs {s['crude']['ltp']:,.0f}" +
-                     (f", {crude:+.1f}% since last night" if crude is not None else " (last close, market not open yet)"))
+        lines += ["", "Crude oil (MCX)", f"Rs {s['crude']['ltp']:,.0f}" +
+                  (f", {crude:+.1f}% since last night" if crude is not None else " (last close, market not open yet)")]
     if s["usdinr"]:
-        lines.append(f"USD/INR futures: {s['usdinr']['ltp']:.2f}" +
-                     (f" ({'rupee weaker' if rupee > 0 else 'rupee stronger'} {abs(rupee):.2f}%)" if rupee is not None else " (last close)"))
+        lines += ["", "Rupee", f"USD/INR {s['usdinr']['ltp']:.2f}" +
+                  (f", {'rupee weaker' if rupee > 0 else 'rupee stronger'} {abs(rupee):.2f}%" if rupee is not None else " (last close)")]
+    india = []
     if s["vix"]:
-        lines.append(f"India VIX (last close): {s['vix']['ltp']:.1f}")
+        india.append(f"VIX {s['vix']['ltp']:.1f} (last close)")
     if s["nifty"]:
-        lines.append(f"NIFTY last close: {s['nifty']['ltp']:,.1f}")
+        india.append(f"NIFTY last close {s['nifty']['ltp']:,.1f}")
+    if india:
+        lines += ["", "India"] + india
     label, why = score(us, crude, rupee)
-    lines += [f"Early read: {label} ({why})", "Opening gap follows at about 9:12."]
+    lines += ["", f"EARLY READ: {label}", why, "", "Opening gap follows at about 9:12."]
     return "\n".join(lines), (crude, rupee)
 
 
 def gap_alert(s, us, crude, rupee, tag=""):
     f, n, prev = s["fut"], s["nifty"], s.get("fut_prev")
     if not f or not prev or not fresh(f) or abs(f["ltp"] - prev) < 0.05:
-        return f"{tag}Opening indication: pre-open price not available from the data feed. The gap will be in the 9:20 brief."
+        return f"{tag}OPENING INDICATION\n\nPre-open price not available from the data feed.\nThe gap will be in the 9:20 brief."
     gap = (f["ltp"] - prev) / prev * 100
     kind = "GAP UP" if gap > GAP_FLAT else "GAP DOWN" if gap < -GAP_FLAT else "FLAT OPEN"
-    est = f" Implied NIFTY open about {n['ltp'] * (1 + gap / 100):,.0f}." if n else ""
     label, why = score(us, crude, rupee, gap)
-    return (f"{tag}Opening indication {now_ist():%H:%M}: {kind} {gap:+.2f}%\n"
-            f"NIFTY futures pre-open {f['ltp']:,.1f} vs last close {prev:,.1f}.{est}\n"
-            f"Sentiment today: {label} ({why})\n"
-            "This is a read of the cues, not a trade signal.")
+    est = f"\nImplied NIFTY open about {n['ltp'] * (1 + gap / 100):,.0f}" if n else ""
+    return (f"{tag}OPENING INDICATION  {now_ist():%H:%M}\n\n{kind} {gap:+.2f}%\n\n"
+            f"NIFTY futures pre-open {f['ltp']:,.1f}\nLast close {prev:,.1f}{est}\n\n"
+            f"SENTIMENT TODAY: {label}\n{why}\n\n"
+            "A read of the cues, not a trade signal.")
 
 
 def wait_until(t):

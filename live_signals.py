@@ -102,15 +102,16 @@ class Engine:
                         time=now, breadth=ctx.get("breadth"), oi_bias=ctx.get("oi_bias"), pcr=ctx.get("pcr"))
         self.count[rule] += 1
         name = "LATE MOMENTUM (tested rule)" if rule == "A" else "TREND + CONFIRMATION (experimental)"
-        lines = [f"BUY NIFTY {strike} {typ}  (expiry {ctx['expiry']:%d %b})",
-                 f"Rule: {name}", f"Why: {why}",
-                 f"Entry: premium Rs {prem:.1f} | NIFTY {spot:.1f}",
-                 f"Stop loss: NIFTY {stop:.1f} (premium about Rs {est(stop, strike, typ):.0f})",
-                 (f"Target: NIFTY {tgt:.1f} (premium about Rs {est(tgt, strike, typ):.0f})" if tgt
+        lines = [f"BUY NIFTY {strike} {typ}", f"Expiry {ctx['expiry']:%d %b}", "",
+                 f"Rule: {name}", f"Why: {why}", "",
+                 f"Entry premium: Rs {prem:.1f}", f"NIFTY at entry: {spot:,.1f}", "",
+                 f"Stop loss: NIFTY {stop:,.1f} (premium about Rs {est(stop, strike, typ):.0f})",
+                 (f"Target: NIFTY {tgt:,.1f} (premium about Rs {est(tgt, strike, typ):.0f})" if tgt
                   else "Target: none, hold to time exit"),
-                 f"Time exit: {C.SQUARE_OFF:%H:%M}",
-                 self.context_line(ctx), "PAPER TRADE. Not advice."]
-        self.notify("\n".join(x for x in lines if x))
+                 f"Time exit: {C.SQUARE_OFF:%H:%M}"]
+        cl = self.context_line(ctx)
+        lines += (["", cl] if cl else []) + ["", "PAPER TRADE. Not advice."]
+        self.notify("\n".join(lines))
 
     @staticmethod
     def context_line(ctx):
@@ -121,7 +122,7 @@ class Engine:
             bits.append(f"PCR {ctx['pcr']:.2f}")
         if ctx.get("oi_bias") is not None:
             bits.append(f"OI bias {ctx['oi_bias']:+.1%}")
-        return "Context: " + ", ".join(bits) if bits else ""
+        return "Context: " + " | ".join(bits) if bits else ""
 
     # -- called between bars with the latest index price ---------------------
     def on_tick(self, spot, ctx, now):
@@ -153,17 +154,17 @@ class Engine:
                 if new:
                     w.writeheader()
                 w.writerow(row)
-        self.notify(f"EXIT NIFTY {p['strike']} {p['typ']}: {reason}\n"
-                    f"Premium Rs {p['prem']:.1f} -> Rs {px:.1f} | NIFTY {p['spot']:.1f} -> {spot:.1f}\n"
+        self.notify(f"EXIT NIFTY {p['strike']} {p['typ']}\nReason: {reason}\n\n"
+                    f"Premium: Rs {p['prem']:.1f} -> Rs {px:.1f}\nNIFTY: {p['spot']:,.1f} -> {spot:,.1f}\n\n"
                     f"Result: Rs {pnl:+,.0f} per lot ({self.lot} qty), before charges")
         self.pos, self.cool = None, C.COOLDOWN_BARS
 
     def summary(self):
         if not self.done:
-            return "Day summary: no trades today."
+            return "DAY SUMMARY\n\nNo trades today."
         tot = sum(r["pnl_per_lot"] for r in self.done)
-        return (f"Day summary: {len(self.done)} paper trade(s), total Rs {tot:+,.0f} per lot before charges.\n"
-                + "\n".join(f"  {r['rule']} {r['strike']} {r['side']}: {r['reason']}, Rs {r['pnl_per_lot']:+,}" for r in self.done))
+        return (f"DAY SUMMARY\n\n{len(self.done)} paper trade(s)\nTotal: Rs {tot:+,.0f} per lot, before charges\n\n"
+                + "\n".join(f"{r['strike']} {r['side']} (rule {r['rule']}): {r['reason']}, Rs {r['pnl_per_lot']:+,}" for r in self.done))
 
 
 # ------------------------------------------------------------------ live feed
@@ -245,7 +246,7 @@ def run_live(symbol):
     _env()
     feed = Live(symbol)
     eng = Engine(telegram, feed.lot, feed.spec["step"])
-    telegram(f"NIFTY signal system started (paper trading). Expiry {feed.expiry:%d %b}, lot {feed.lot}.")
+    telegram(f"SYSTEM STARTED (paper trading)\n\nNIFTY expiry {feed.expiry:%d %b}, lot size {feed.lot}")
     last_bar, ctx, brief, errors = None, None, False, 0
     while True:
         now = now_ist()
@@ -266,9 +267,10 @@ def run_live(symbol):
                     if not brief:
                         l = df.iloc[-1]
                         prev = df[df.index.date < now.date()].close.iloc[-1]
-                        telegram(f"Morning brief {now:%d %b}\nNIFTY {l.close:.1f} ({(l.close - prev) / prev:+.2%} vs yesterday)\n"
-                                 f"VIX {feed.vix:.1f}\n" + eng.context_line(ctx) +
-                                 (f"\nBiggest call OI at {ctx['call_wall']:.0f} (resistance), biggest put OI at {ctx['put_wall']:.0f} (support)"
+                        telegram(f"MORNING BRIEF  {now:%d %b, %H:%M}\n\n"
+                                 f"NIFTY {l.close:,.1f} ({(l.close - prev) / prev:+.2%} vs yesterday)\nIndia VIX {feed.vix:.1f}\n\n"
+                                 + eng.context_line(ctx) +
+                                 (f"\n\nResistance: biggest call OI at {ctx['call_wall']:.0f}\nSupport: biggest put OI at {ctx['put_wall']:.0f}"
                                   if ctx.get("call_wall") else ""))
                         brief = True
                     eng.on_bar(add_indicators(df), ctx, now)
@@ -294,7 +296,7 @@ def run_live(symbol):
 
 
 # ---------------------------------------------------------------- replay mode
-def run_replay(day, symbol):
+def run_replay(day, symbol, send=False):
     from backtest import load, next_expiry
     spec = C.INSTRUMENTS[symbol]
     px = load(f"data/{symbol}_5m.csv")
@@ -315,7 +317,14 @@ def run_replay(day, symbol):
         return dict(ltp=p, bid=p - C.SLIPPAGE_PTS, ask=p + C.SLIPPAGE_PTS)
 
     ctx = dict(expiry=exp, quote=quote, est=est, replay=True)
-    eng = Engine(lambda s: print(f"[{state['now']:%H:%M}] " + s.replace("\n", "\n        ") + "\n"), spec["lot"], spec["step"], log=None)
+    if send:
+        _env()
+        out = lambda s: (telegram(f"[SAMPLE {state['now']:%H:%M}]\n" + s), _time.sleep(1.2))
+        telegram(f"[SAMPLE] Replay of {pd.Timestamp(day):%d %b %Y}, to show what a market day looks like.\n\n"
+                 "Option prices are modelled, not live. Nothing below is a real signal.")
+    else:
+        out = lambda s: print(f"[{state['now']:%H:%M}] " + s.replace("\n", "\n        ") + "\n")
+    eng = Engine(out, spec["lot"], spec["step"], log=None)
     print(f"REPLAY {day} (modelled option prices, rule B confirmations switched off)\n")
     for ts in today.index:
         bar = today.loc[ts]
@@ -329,7 +338,8 @@ def run_replay(day, symbol):
         state["now"], state["spot"] = ts + timedelta(minutes=5), bar.close
         if state["now"].time() < C.SQUARE_OFF:
             eng.on_bar(add_indicators(hist[hist.index <= ts].tail(600)), ctx, state["now"])
-    print(eng.summary())
+    state["now"] = pd.Timestamp.combine(d, time(15, 11))
+    out(eng.summary())
     return eng
 
 
@@ -354,11 +364,12 @@ if __name__ == "__main__":
     ap = argparse.ArgumentParser()
     ap.add_argument("--symbol", default="NIFTY", choices=list(C.INSTRUMENTS))
     ap.add_argument("--replay", default="", help="YYYY-MM-DD: dry run on a past day")
+    ap.add_argument("--send", action="store_true", help="with --replay: send the replay to Telegram as [SAMPLE] messages")
     ap.add_argument("--selftest", action="store_true")
     a = ap.parse_args()
     if a.selftest:
         selftest(a.symbol)
     elif a.replay:
-        run_replay(a.replay, a.symbol)
+        run_replay(a.replay, a.symbol, a.send)
     else:
         run_live(a.symbol)
