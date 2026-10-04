@@ -1,0 +1,10 @@
+# secrets: never commit
+.env
+.kite_token.json
+# local data and outputs
+data/
+sample_data/
+chain/
+results/
+__pycache__/
+*.pyc
