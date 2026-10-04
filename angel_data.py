@@ -25,7 +25,7 @@ def now_ist():
     from zoneinfo import ZoneInfo
     return datetime.now(ZoneInfo("Asia/Kolkata")).replace(tzinfo=None)
 SCRIP_URL = "https://margincalculator.angelone.in/OpenAPI_File/files/OpenAPIScripMaster.json"
-SCRIP_CACHE = ".scrip_cache.csv"
+SCRIP_CACHE = ".scrip_cache_v2.csv"
 
 
 def _env():
@@ -90,7 +90,10 @@ def scrip_master():
     m = pd.DataFrame(r.json()).astype(str)
     idx_opts = (m.exch_seg == "NFO") & (m.instrumenttype == "OPTIDX") & m.name.isin(list(C.INSTRUMENTS))
     stocks = (m.exch_seg == "NSE") & m.symbol.isin([s + "-EQ" for s in C.HEAVYWEIGHTS])
-    m = m[idx_opts | stocks | (m.instrumenttype == "AMXIDX")]
+    futs = (((m.exch_seg == "NFO") & (m.instrumenttype == "FUTIDX") & m.name.isin(list(C.INSTRUMENTS)))
+            | ((m.exch_seg == "MCX") & (m.instrumenttype == "FUTCOM") & (m.name == "CRUDEOIL"))
+            | ((m.exch_seg == "CDS") & (m.instrumenttype == "FUTCUR") & (m.name == "USDINR")))
+    m = m[idx_opts | stocks | futs | (m.instrumenttype == "AMXIDX")]
     tmp = SCRIP_CACHE + ".tmp"
     m.to_csv(tmp, index=False)
     os.replace(tmp, SCRIP_CACHE)  # atomic: a half-written file never becomes the cache
