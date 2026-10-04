@@ -25,7 +25,7 @@ def now_ist():
     from zoneinfo import ZoneInfo
     return datetime.now(ZoneInfo("Asia/Kolkata")).replace(tzinfo=None)
 SCRIP_URL = "https://margincalculator.angelone.in/OpenAPI_File/files/OpenAPIScripMaster.json"
-SCRIP_CACHE = ".scrip_master.json"
+SCRIP_CACHE = ".scrip_cache.csv"
 
 
 def _env():
@@ -76,14 +76,25 @@ class Angel:
 
 
 def scrip_master():
-    """Angel One's instrument list, cached once per day (large file)."""
-    fresh = os.path.exists(SCRIP_CACHE) and date.fromtimestamp(os.path.getmtime(SCRIP_CACHE)) == date.today()
-    if not fresh:
-        print("Downloading instrument list ...")
-        r = requests.get(SCRIP_URL, timeout=120)
-        r.raise_for_status()
-        open(SCRIP_CACHE, "wb").write(r.content)
-    return pd.read_json(SCRIP_CACHE, dtype=str)
+    """Angel One's instrument list, trimmed to what this project uses and cached once per day."""
+    if os.path.exists(SCRIP_CACHE) and date.fromtimestamp(os.path.getmtime(SCRIP_CACHE)) == now_ist().date():
+        try:
+            m = pd.read_csv(SCRIP_CACHE, dtype=str)
+            if len(m) > 100:
+                return m
+        except Exception:
+            pass  # damaged cache: download again
+    print("Downloading instrument list (about 30 MB) ...")
+    r = requests.get(SCRIP_URL, timeout=180)
+    r.raise_for_status()
+    m = pd.DataFrame(r.json()).astype(str)
+    idx_opts = (m.exch_seg == "NFO") & (m.instrumenttype == "OPTIDX") & m.name.isin(list(C.INSTRUMENTS))
+    stocks = (m.exch_seg == "NSE") & m.symbol.isin([s + "-EQ" for s in C.HEAVYWEIGHTS])
+    m = m[idx_opts | stocks | (m.instrumenttype == "AMXIDX")]
+    tmp = SCRIP_CACHE + ".tmp"
+    m.to_csv(tmp, index=False)
+    os.replace(tmp, SCRIP_CACHE)  # atomic: a half-written file never becomes the cache
+    return m
 
 
 def fetch(api, token, start, end, chunk_days=90):
