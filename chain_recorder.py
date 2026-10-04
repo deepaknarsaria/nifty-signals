@@ -14,7 +14,7 @@ from datetime import date, datetime, time
 import pandas as pd
 
 import config as C
-from angel_data import Angel, scrip_master
+from angel_data import Angel, now_ist, scrip_master
 
 STRIKES_EACH_SIDE = 12  # 25 strikes x CE/PE = 50 symbols = one quote request
 
@@ -25,7 +25,7 @@ def nearest_chain(symbol):
     m["expiry"] = pd.to_datetime(m.expiry, format="%d%b%Y").dt.date
     m["strike"] = m.strike.astype(float) / 100
     m["type"] = m.symbol.str[-2:]
-    expiry = m[m.expiry >= date.today()].expiry.min()
+    expiry = m[m.expiry >= now_ist().date()].expiry.min()
     return m[m.expiry == expiry], expiry
 
 
@@ -38,11 +38,11 @@ def snapshot(api, chain, expiry, spec):
     for i in range(0, len(tokens), 50):
         _time.sleep(1.1)  # 50 symbols per request, 1 request per second
         got += api.quote({"NFO": tokens[i:i + 50]})
-    now, rows = datetime.now().replace(microsecond=0), []
+    now, rows = now_ist().replace(microsecond=0), []
     for q in got:
         r = sel.loc[str(q["symbolToken"])]
         depth = q.get("depth") or {}
-        rows.append(dict(time=now, spot=spot, expiry=expiry, strike=r.strike, type=r.type,
+        rows.append(dict(time=now, spot=spot, expiry=expiry, strike=r.strike, type=r.type, token=str(q["symbolToken"]),
                          ltp=q.get("ltp"), oi=q.get("opnInterest", 0), volume=q.get("tradeVolume", 0),
                          bid=(depth.get("buy") or [{}])[0].get("price"),
                          ask=(depth.get("sell") or [{}])[0].get("price"), lot=r.lotsize))
@@ -53,10 +53,10 @@ def main(symbol, every):
     api, spec = Angel(), C.INSTRUMENTS[symbol]
     chain, expiry = nearest_chain(symbol)
     os.makedirs("chain", exist_ok=True)
-    path = f"chain/{symbol}_{date.today()}.csv"
+    path = f"chain/{symbol}_{now_ist().date()}.csv"
     print(f"Recording {symbol} expiry {expiry} to {path} every {every}s. Ctrl+C to stop.")
     while True:
-        now = datetime.now().time()
+        now = now_ist().time()
         if now > time(15, 31):
             print("Market closed. Done.")
             break
@@ -65,7 +65,7 @@ def main(symbol, every):
                 snap, spot = snapshot(api, chain, expiry, spec)
                 snap.to_csv(path, mode="a", header=not os.path.exists(path), index=False)
                 ce, pe = snap[snap.type == "CE"].oi.sum(), snap[snap.type == "PE"].oi.sum()
-                print(f"{datetime.now():%H:%M:%S} spot {spot:.1f}  PCR {pe / ce:.2f}" if ce else "no OI yet")
+                print(f"{now_ist():%H:%M:%S} spot {spot:.1f}  PCR {pe / ce:.2f}" if ce else "no OI yet")
             except Exception as e:  # keep recording through a bad tick or network blip
                 print("snapshot failed:", e)
                 try:

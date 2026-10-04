@@ -18,6 +18,12 @@ import requests
 import config as C
 
 BASE = "https://apiconnect.angelone.in"
+
+
+def now_ist():
+    """Current India time as a plain datetime, whatever the computer's clock zone is."""
+    from zoneinfo import ZoneInfo
+    return datetime.now(ZoneInfo("Asia/Kolkata")).replace(tzinfo=None)
 SCRIP_URL = "https://margincalculator.angelone.in/OpenAPI_File/files/OpenAPIScripMaster.json"
 SCRIP_CACHE = ".scrip_master.json"
 
@@ -60,7 +66,7 @@ class Angel:
     def candles(self, exchange, token, start, end, interval="FIVE_MINUTE"):
         rows = self._post("/rest/secure/angelbroking/historical/v1/getCandleData",
                           {"exchange": exchange, "symboltoken": str(token), "interval": interval,
-                           "fromdate": f"{start} 09:15", "todate": f"{end} 15:30"}) or []
+                           "fromdate": f"{start} 09:15", "todate": f"{end} 15:40"}) or []
         return pd.DataFrame(rows, columns=["date", "open", "high", "low", "close", "volume"])
 
     def quote(self, exchange_tokens, mode="FULL"):

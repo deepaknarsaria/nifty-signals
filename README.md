@@ -16,6 +16,15 @@ python chain_recorder.py --symbol NIFTY           # leave running 9:15 to 15:30 
 No Angel One setup yet? `python make_sample_data.py && python backtest.py --data-dir sample_data`
 runs the engine on fake data, only to confirm the code works.
 
+## Live Telegram alerts (paper trading)
+1. In Telegram open @BotFather, send `/newbot`, copy the bot token into `.env` as `TELEGRAM_BOT_TOKEN=...`
+2. Open your new bot in Telegram and send it `hi`, then run `python telegram_setup.py` (or double-click `5_telegram_setup.bat`).
+3. Each market day before 9:15: `python live_signals.py` (or double-click `6_live_signals.bat`). Leave the window open until 15:15.
+
+It records the option chain too, so `chain_recorder.py` does not need to run separately.
+Check the data paths any time with `python live_signals.py --selftest`.
+Dry run on a past day: `python live_signals.py --replay 2026-10-01`.
+
 ## Files
 | File | Purpose |
 |---|---|
@@ -24,6 +33,9 @@ runs the engine on fake data, only to confirm the code works.
 | `backtest.py` | Simulates trades, writes `results/` report and trade log |
 | `angel_data.py` | Angel One SmartAPI login and historical download |
 | `chain_recorder.py` | Saves option chain OI snapshots for later OI backtests |
+| `live_signals.py` | Live alerts on Telegram with real option prices, logs paper trades |
+| `telegram_setup.py` | One-time Telegram connection |
+| `research.py` | Compares rule families and option decay assumptions |
 
 ## Rules being tested
 Score from 5 components, each +1 / -1 / 0: trend (EMA20 vs EMA50), session VWAP,

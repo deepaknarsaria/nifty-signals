@@ -55,9 +55,10 @@ def add_indicators(df):
     df["or_low"] = orl.where(pos >= n)
 
     # previous day's high / low
-    daily = df.groupby(day).agg(h=("high", "max"), l=("low", "min")).shift(1)
+    daily = df.groupby(day).agg(h=("high", "max"), l=("low", "min"), c=("close", "last")).shift(1)
     df["pd_high"] = day.map(daily["h"]).values
     df["pd_low"] = day.map(daily["l"]).values
+    df["pd_close"] = day.map(daily["c"]).values
 
     c = df["close"]
     comp = pd.DataFrame(index=df.index)

@@ -28,7 +28,7 @@ CONFIRM_BARS = 2            # two consecutive closes rule
 # ---- Trade management ------------------------------------------------------
 ENTRY_START = time(9, 30)
 ENTRY_END = time(14, 30)
-SQUARE_OFF = time(15, 15)
+SQUARE_OFF = time(15, 10)   # index stops updating at 15:15 since the Closing Auction Session (3 Aug 2026)
 STOP_ATR = 1.5              # stop distance on the index, in ATRs
 TARGET_R = 2.0              # target = TARGET_R x stop distance
 MAX_TRADES_PER_DAY = 3
@@ -50,3 +50,21 @@ GST = 0.18                  # on brokerage + exchange + SEBI
 
 # ---- Backtest --------------------------------------------------------------
 IN_SAMPLE_FRACTION = 0.70   # first 70% of days = in-sample, last 30% = out-of-sample
+
+# ---- Live alerts -----------------------------------------------------------
+# Session notes (NSE rule changes):
+#  * Closing Auction Session from 3 Aug 2026: F&O stocks stop continuous trading at 15:15,
+#    auction 15:15-15:30, so NIFTY spot is frozen in that window and jumps to the auction
+#    close. Derivatives trade until 15:40. All positions are closed by 15:10.
+#  * Revised pre-open from 7 Sep 2026: 9:00-9:05 market+limit orders, 9:05-9:10 limit only,
+#    random close 9:08-9:10. Options are not part of pre-open. No entries before 9:30.
+LATE_TIME = time(14, 0)        # rule A: late-day momentum decision time
+LATE_MIN_MOVE = 0.003          # rule A: minimum move from previous close (0.3%)
+LATE_STOP_ATR = 3.0            # rule A: stop distance in 5-min ATRs
+TREND_ENTRY_END = time(13, 45) # rule B: last entry time
+BREADTH_BULL = 0.60            # rule B: weighted share of heavyweights above their VWAP
+BREADTH_BEAR = 0.40
+OI_BIAS_MIN = 0.01             # rule B: (put OI change - call OI change) / total OI
+# Approximate NIFTY weights (%), top names. Used only for breadth; refresh occasionally.
+HEAVYWEIGHTS = {"HDFCBANK": 13.0, "ICICIBANK": 9.0, "RELIANCE": 8.5, "INFY": 5.0, "BHARTIARTL": 4.7,
+                "LT": 4.0, "ITC": 3.5, "TCS": 3.0, "SBIN": 3.0, "AXISBANK": 3.0, "KOTAKBANK": 2.7, "M&M": 2.6}

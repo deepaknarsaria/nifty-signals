@@ -10,3 +10,5 @@ __pycache__/
 *.pyc
 .scrip_master.json
 logs/
+paper_trades.csv
+live_state.json
