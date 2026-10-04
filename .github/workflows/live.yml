@@ -1,0 +1,55 @@
+name: NIFTY live signals
+
+on:
+  schedule:
+    - cron: "46 3 * * 1-5"   # 09:16 IST, Monday to Friday
+  workflow_dispatch:
+    inputs:
+      mode:
+        description: "selftest = check connections only, live = run the signal loop now"
+        default: selftest
+        type: choice
+        options: [selftest, live]
+
+permissions:
+  contents: write
+
+concurrency:
+  group: live-signals
+  cancel-in-progress: false
+
+jobs:
+  run:
+    runs-on: ubuntu-latest
+    timeout-minutes: 358
+    env:
+      ANGEL_API_KEY: ${{ secrets.ANGEL_API_KEY }}
+      ANGEL_CLIENT_CODE: ${{ secrets.ANGEL_CLIENT_CODE }}
+      ANGEL_PIN: ${{ secrets.ANGEL_PIN }}
+      ANGEL_TOTP_SECRET: ${{ secrets.ANGEL_TOTP_SECRET }}
+      TELEGRAM_BOT_TOKEN: ${{ secrets.TELEGRAM_BOT_TOKEN }}
+      TELEGRAM_CHAT_ID: ${{ secrets.TELEGRAM_CHAT_ID }}
+      PYTHONUNBUFFERED: "1"
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.11"
+          cache: pip
+      - run: pip install -r requirements.txt
+      - name: Self test
+        if: github.event_name == 'workflow_dispatch' && inputs.mode == 'selftest'
+        run: python live_signals.py --selftest
+      - name: Live signals
+        if: github.event_name == 'schedule' || inputs.mode == 'live'
+        run: python live_signals.py
+      - name: Save paper trades and option chain data
+        if: always() && (github.event_name == 'schedule' || inputs.mode == 'live')
+        run: |
+          git config user.name "nifty-signals-bot"
+          git config user.email "actions@users.noreply.github.com"
+          git add -f paper_trades.csv chain/ 2>/dev/null || true
+          git diff --cached --quiet && exit 0
+          git commit -m "Live data $(TZ=Asia/Kolkata date +%F)"
+          git pull --rebase
+          git push

@@ -249,7 +249,7 @@ def run_live(symbol):
     last_bar, ctx, brief, errors = None, None, False, 0
     while True:
         now = now_ist()
-        if now.time() >= time(15, 16) and not eng.pos:
+        if now.time() >= time(15, 11) and not eng.pos:
             telegram(eng.summary())
             break
         if now.time() < time(9, 20):
@@ -273,6 +273,9 @@ def run_live(symbol):
                         brief = True
                     eng.on_bar(add_indicators(df), ctx, now)
                     last_bar = bar
+                elif now.time() >= time(9, 40) and (df.empty or df.index[-1].date() < now.date()):
+                    telegram(f"{now:%d %b}: no NIFTY data today, market looks closed. Stopping.")
+                    break
                 elif now - bar > timedelta(minutes=8):
                     last_bar = bar  # candle never arrived; skip it
             if eng.pos and ctx:

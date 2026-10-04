@@ -4,12 +4,10 @@
 # local data and outputs
 data/
 sample_data/
-chain/
 results/
 __pycache__/
 *.pyc
 .scrip_master.json
 .scrip_cache.csv*
 logs/
-paper_trades.csv
 live_state.json
