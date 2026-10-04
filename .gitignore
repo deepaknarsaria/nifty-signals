@@ -8,3 +8,4 @@ chain/
 results/
 __pycache__/
 *.pyc
+.scrip_master.json

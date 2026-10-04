@@ -1,23 +1,19 @@
 # NIFTY signal system: step 1 (backtest)
 
 ## Setup (once)
-1. Install Python 3.10+, then: `pip install kiteconnect pandas numpy`
-2. Create a Kite Connect app at developers.kite.trade (paid Connect plan, needed for market data).
-   Set the redirect URL to `http://127.0.0.1`.
-3. Create a file named `.env` in this folder:
-   ```
-   KITE_API_KEY=your_key
-   KITE_API_SECRET=your_secret
-   ```
+1. Install Python 3.10+, then: `pip install -r requirements.txt`
+2. On smartapi.angelone.in: create an app (gives the API key) and use "Enable TOTP"
+   (gives a TOTP secret, the long text code shown next to the QR).
+3. Copy `.env.example` to `.env` and fill in the four values. Never share or commit `.env`.
 
 ## Run
 ```
-python kite_data.py login                         # every morning, token expires daily
-python kite_data.py download --symbol NIFTY --years 3
+python angel_data.py login                        # checks your credentials work
+python angel_data.py download --symbol NIFTY --years 3
 python backtest.py --symbol NIFTY
 python chain_recorder.py --symbol NIFTY           # leave running 9:15 to 15:30 daily
 ```
-No Kite account yet? `python make_sample_data.py && python backtest.py --data-dir sample_data`
+No Angel One setup yet? `python make_sample_data.py && python backtest.py --data-dir sample_data`
 runs the engine on fake data, only to confirm the code works.
 
 ## Files
@@ -26,7 +22,7 @@ runs the engine on fake data, only to confirm the code works.
 | `config.py` | Every setting: thresholds, stop/target, costs, lot sizes |
 | `signals.py` | Scoring rules. Shared by backtest and the later live alerts |
 | `backtest.py` | Simulates trades, writes `results/` report and trade log |
-| `kite_data.py` | Kite login and historical download |
+| `angel_data.py` | Angel One SmartAPI login and historical download |
 | `chain_recorder.py` | Saves option chain OI snapshots for later OI backtests |
 
 ## Rules being tested
@@ -45,7 +41,7 @@ opening 15-min range break, RSI momentum, previous day high/low break.
 ## Known limits
 - Option premiums are modelled (Black-Scholes, India VIX as IV), not real traded prices.
   Real ATM IV differs from VIX and moves intraday, so rupee P&L is an estimate.
-- No OI, PCR or volume in this backtest. The index has no volume and Kite has no
+- No OI, PCR or volume in this backtest. The index has no volume and Angel One has no
   intraday history for expired options. `chain_recorder.py` builds that dataset going forward.
 - Holidays and special sessions are ignored in the expiry calendar.
 - Lot sizes, STT and charges in `config.py` must be checked against a current contract note.

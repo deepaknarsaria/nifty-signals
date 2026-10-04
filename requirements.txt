@@ -1,3 +1,4 @@
-kiteconnect
 pandas
 numpy
+requests
+pyotp

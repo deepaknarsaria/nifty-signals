@@ -3,13 +3,12 @@ from datetime import time, date
 
 # ---- Instruments -----------------------------------------------------------
 # lot sizes change by NSE circular: VERIFY before trusting rupee P&L.
-# The live recorder reads the real lot size from Kite's instrument list.
+# The live recorder saves the real lot size from Angel One's instrument list.
 INSTRUMENTS = {
-    "NIFTY":     dict(kite_symbol="NSE:NIFTY 50",   token=256265, step=50,  lot=65, expiry="weekly"),
-    "BANKNIFTY": dict(kite_symbol="NSE:NIFTY BANK", token=260105, step=100, lot=30, expiry="monthly"),
+    "NIFTY":     dict(angel_token="99926000", step=50,  lot=65, expiry="weekly"),
+    "BANKNIFTY": dict(angel_token="99926009", step=100, lot=30, expiry="monthly"),
 }
-VIX_TOKEN = 264969          # INDIA VIX
-VIX_SYMBOL = "NSE:INDIA VIX"
+VIX_ANGEL_TOKEN = "99926017"   # INDIA VIX (verify: download prints a warning if it returns nothing)
 
 # Expiry weekday: Thursday (3) until Aug 2025, Tuesday (1) from 1 Sep 2025.
 EXPIRY_SWITCH_DATE = date(2025, 9, 1)
