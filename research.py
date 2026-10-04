@@ -44,7 +44,10 @@ def tte(ts, exp, decay):
     if decay == "trading":
         return t_to_expiry(ts, exp)
     secs = (pd.Timestamp(exp) + pd.Timedelta(hours=15, minutes=30) - ts).total_seconds()
-    return max(secs, 60) / (365 * 86400)
+    cal = max(secs, 60) / (365 * 86400)
+    if decay == "blend":   # calibrated on real Sep 2026 option candles: roughly half-way between the two clocks
+        return 0.5 * t_to_expiry(ts, exp) + 0.5 * cal
+    return cal
 
 
 def simulate(days, decide, max_trades=1, exit_time=C.SQUARE_OFF, cooldown=3, itm=0, decay="trading", slip=C.SLIPPAGE_PTS):
