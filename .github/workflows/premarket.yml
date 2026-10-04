@@ -4,6 +4,12 @@ on:
   schedule:
     - cron: "5 3 * * 1-5"   # 08:35 IST start; the script waits and sends at 9:01 and 9:12
   workflow_dispatch:
+    inputs:
+      mode:
+        description: "test = send [TEST] messages to Telegram now"
+        default: test
+        type: choice
+        options: [test, live]
 
 jobs:
   run:
@@ -25,4 +31,7 @@ jobs:
           python-version: "3.11"
           cache: pip
       - run: pip install -r requirements.txt
-      - run: python premarket.py
+      - if: github.event_name == 'workflow_dispatch' && inputs.mode == 'test'
+        run: python premarket.py --send-test
+      - if: github.event_name == 'schedule' || inputs.mode == 'live'
+        run: python premarket.py

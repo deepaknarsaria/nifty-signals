@@ -153,10 +153,10 @@ def wait_until(t):
         _time.sleep(15)
 
 
-def main(test):
+def main(test, to_telegram=False):
     _env()
     api, m = Angel(), scrip_master()
-    send = print if test else telegram
+    send = telegram if (to_telegram or not test) else print
     tag = "[TEST] " if test else ""
     if not test:
         if now_ist().time() > time(9, 25):
@@ -172,5 +172,7 @@ def main(test):
 
 if __name__ == "__main__":
     ap = argparse.ArgumentParser()
-    ap.add_argument("--test", action="store_true")
-    main(ap.parse_args().test)
+    ap.add_argument("--test", action="store_true", help="run now and print, send nothing")
+    ap.add_argument("--send-test", action="store_true", help="run now and send the test messages to Telegram")
+    a = ap.parse_args()
+    main(a.test or a.send_test, a.send_test)
