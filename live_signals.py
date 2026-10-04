@@ -43,7 +43,7 @@ def telegram(text):
         requests.post(f"https://api.telegram.org/bot{tok}/sendMessage",
                       json={"chat_id": chat, "text": text}, timeout=15)
     except Exception as e:
-        print("telegram send failed:", e)
+        print("telegram send failed:", type(e).__name__)  # never print the URL, it contains the bot token
 
 
 class Engine:

@@ -21,7 +21,10 @@ def main():
     tok = env.get("TELEGRAM_BOT_TOKEN")
     if not tok:
         sys.exit("Add TELEGRAM_BOT_TOKEN=... to .env first.")
-    r = requests.get(f"https://api.telegram.org/bot{tok}/getUpdates", timeout=20).json()
+    try:
+        r = requests.get(f"https://api.telegram.org/bot{tok}/getUpdates", timeout=20).json()
+    except requests.RequestException as e:
+        sys.exit(f"Could not reach Telegram ({type(e).__name__}). Check the internet connection or network block.")
     if not r.get("ok"):
         sys.exit(f"Telegram rejected the token: {r.get('description')}")
     chats = [u["message"]["chat"]["id"] for u in r["result"] if "message" in u]
@@ -31,8 +34,11 @@ def main():
     if env.get("TELEGRAM_CHAT_ID") != chat:
         lines = [l for l in open(".env").read().splitlines() if not l.startswith("TELEGRAM_CHAT_ID=")]
         open(".env", "w").write("\n".join(lines + [f"TELEGRAM_CHAT_ID={chat}"]) + "\n")
-    s = requests.post(f"https://api.telegram.org/bot{tok}/sendMessage",
-                      json={"chat_id": chat, "text": "NIFTY signal system: Telegram is connected."}, timeout=20).json()
+    try:
+        s = requests.post(f"https://api.telegram.org/bot{tok}/sendMessage",
+                          json={"chat_id": chat, "text": "NIFTY signal system: Telegram is connected."}, timeout=20).json()
+    except requests.RequestException as e:
+        sys.exit(f"Could not reach Telegram ({type(e).__name__}).")
     print("Telegram connected. Test message sent." if s.get("ok") else f"Send failed: {s.get('description')}")
 
 
