@@ -53,15 +53,42 @@ class Angel:
                        {"clientcode": client, "password": pin, "totp": pyotp.TOTP(secret).now()})
         self.h["Authorization"] = "Bearer " + d["jwtToken"]
 
-    def _post(self, path, body):
-        r = requests.post(BASE + path, json=body, headers=self.h, timeout=30)
-        try:
-            j = r.json()
-        except ValueError:
-            raise RuntimeError(f"HTTP {r.status_code}: {r.text[:200]}")
-        if not (j.get("status") or j.get("success")):
-            raise RuntimeError(f"Angel One error {j.get('errorcode') or j.get('errorCode')}: {j.get('message')}")
-        return j.get("data")
+    _last = {}
+
+    def _throttle(self, path):
+        """Angel One allows about 1 quote request per second and 3 candle requests per second."""
+        kind = "quote" if "/quote" in path else "candle" if "getCandleData" in path else None
+        if kind:
+            gap = 1.1 if kind == "quote" else 0.4
+            wait = Angel._last.get(kind, 0) + gap - _time.monotonic()
+            if wait > 0:
+                _time.sleep(wait)
+            Angel._last[kind] = _time.monotonic()
+
+    def _post(self, path, body, tries=3):
+        err = "no response"
+        for k in range(tries):
+            self._throttle(path)
+            try:
+                r = requests.post(BASE + path, json=body, headers=self.h, timeout=30)
+            except requests.RequestException as e:
+                err = f"network {type(e).__name__}"
+                _time.sleep(1.5 * (k + 1))
+                continue
+            try:
+                j = r.json()
+            except ValueError:
+                err = f"HTTP {r.status_code}: {r.text[:120]}"   # rate limit replies are not JSON
+                _time.sleep(1.5 * (k + 1))
+                continue
+            if j.get("status") or j.get("success"):
+                return j.get("data")
+            code = j.get("errorcode") or j.get("errorCode")
+            err = f"Angel One error {code}: {j.get('message')}"
+            if str(code).startswith("AG") or "token" in str(j.get("message")).lower():
+                break                                           # login problem: retrying will not help
+            _time.sleep(1.5 * (k + 1))
+        raise RuntimeError(err)
 
     def candles(self, exchange, token, start, end, interval="FIVE_MINUTE"):
         rows = self._post("/rest/secure/angelbroking/historical/v1/getCandleData",

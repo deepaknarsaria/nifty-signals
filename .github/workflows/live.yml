@@ -18,6 +18,10 @@ on:
         description: "true = run even if it already ran today"
         default: "false"
         type: string
+      resume:
+        description: "JSON of an open paper trade to keep tracking after a restart (optional)"
+        default: ""
+        type: string
 
 permissions:
   contents: write
@@ -54,6 +58,7 @@ jobs:
         env:
           GH_TOKEN: ${{ github.token }}
           FORCE: ${{ inputs.force }}
+          RESUME_POS: ${{ inputs.resume }}
         run: |
           if [ "$FORCE" != "true" ]; then
             n=$(gh api "repos/$GITHUB_REPOSITORY/actions/workflows/live.yml/runs?status=success&created=>=$(date -u +%F)" \

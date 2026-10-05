@@ -17,6 +17,7 @@ real entry and exit premiums, which is the evidence for whether the rules make m
 """
 import argparse
 import csv
+import json
 import os
 import time as _time
 from datetime import datetime, time, timedelta
@@ -139,8 +140,15 @@ class Engine:
 
     def exit(self, ctx, spot, now, reason):
         p = self.pos
-        q = ctx["quote"](p["strike"], p["typ"])
-        px = q.get("bid") or q.get("ltp") or 0.0
+        note = ""
+        try:
+            q = ctx["quote"](p["strike"], p["typ"])
+        except Exception as e:
+            print("exit quote failed:", e)
+            q = {}
+        px = q.get("bid") or q.get("ltp")
+        if not px:                                   # no live price: fall back to the model, and say so
+            px, note = round(ctx["est"](spot, p["strike"], p["typ"]), 1), " (estimated, live price unavailable)"
         pnl = (px - p["prem"]) * self.lot
         row = dict(date=now.date(), rule=p["rule"], side=p["typ"], strike=p["strike"], expiry=ctx["expiry"],
                    entry_time=p["time"].strftime("%H:%M:%S"), entry_spot=round(p["spot"], 1), entry_prem=p["prem"],
@@ -155,7 +163,7 @@ class Engine:
                     w.writeheader()
                 w.writerow(row)
         self.notify(f"EXIT NIFTY {p['strike']} {p['typ']}\nReason: {reason}\n\n"
-                    f"Premium: Rs {p['prem']:.1f} -> Rs {px:.1f}\nNIFTY: {p['spot']:,.1f} -> {spot:,.1f}\n\n"
+                    f"Premium: Rs {p['prem']:.1f} -> Rs {px:.1f}{note}\nNIFTY: {p['spot']:,.1f} -> {spot:,.1f}\n\n"
                     f"Result: Rs {pnl:+,.0f} per lot ({self.lot} qty), before charges")
         self.pos, self.cool = None, C.COOLDOWN_BARS
 
@@ -190,7 +198,10 @@ class Live:
         return df.set_index("date").sort_index()
 
     def spot(self):
-        return self.api.quote({"NSE": [self.spec["angel_token"]]}, mode="LTP")[0]["ltp"]
+        q = self.api.quote({"NSE": [self.spec["angel_token"]]}, mode="LTP")
+        if not q:
+            raise RuntimeError("no index quote returned")
+        return q[0]["ltp"]
 
     def quote(self, strike, typ):
         row = self.chain[(self.chain.strike == strike) & (self.chain.type == typ)]
@@ -246,8 +257,35 @@ def run_live(symbol):
     _env()
     feed = Live(symbol)
     eng = Engine(telegram, feed.lot, feed.spec["step"])
-    telegram(f"SYSTEM STARTED (paper trading)\n\nNIFTY expiry {feed.expiry:%d %b}, lot size {feed.lot}")
-    last_bar, ctx, brief, errors = None, None, False, 0
+    resume = os.getenv("RESUME_POS", "").strip()
+    if resume:      # restarted mid-day: keep tracking the paper trade that was open
+        p = json.loads(resume)
+        p["d"] = 1 if p["typ"] == "CE" else -1
+        p["time"] = datetime.combine(now_ist().date(), time.fromisoformat(p["time"]))
+        for k in ("breadth", "oi_bias", "pcr", "tgt"):
+            p.setdefault(k, None)
+        eng.pos = p
+        eng.count[p["rule"]] += 1
+        telegram(f"SYSTEM RESTARTED after a fix\n\nStill tracking: NIFTY {p['strike']} {p['typ']} bought at Rs {p['prem']:.1f} ({p['time']:%H:%M})")
+    else:
+        telegram(f"SYSTEM STARTED (paper trading)\n\nNIFTY expiry {feed.expiry:%d %b}, lot size {feed.lot}")
+    last_bar, ctx, brief = None, None, False
+    errors, bar_fails, last_warn, last_spot = 0, 0, None, None
+
+    def problem(e, now):
+        nonlocal errors, last_warn
+        errors += 1
+        msg = str(e)[:140]
+        print(f"{now:%H:%M:%S} error:", msg)
+        if "AG" in msg or "token" in msg.lower():
+            try:
+                feed.relogin()
+            except Exception as e2:
+                print("re-login failed:", e2)
+        if errors >= 5 and (last_warn is None or now - last_warn > timedelta(minutes=30)):
+            telegram(f"Warning: data errors from Angel One\n\n{msg}\n\nThe system keeps retrying. Signals may be delayed.")
+            last_warn = now
+
     while True:
         now = now_ist()
         if now.time() >= time(15, 10, 45) and not eng.pos:
@@ -256,6 +294,8 @@ def run_live(symbol):
         if now.time() < time(9, 20):
             _time.sleep(20)
             continue
+        ok = True
+        # 1) once per completed 5-minute bar: candles, option chain, stocks, entry/exit rules
         try:
             bar = (now - timedelta(minutes=5, seconds=8)).replace(second=0, microsecond=0)
             bar -= timedelta(minutes=bar.minute % 5)
@@ -274,24 +314,34 @@ def run_live(symbol):
                                   if ctx.get("call_wall") else ""))
                         brief = True
                     eng.on_bar(add_indicators(df), ctx, now)
-                    last_bar = bar
-                elif now.time() >= time(9, 40) and (df.empty or df.index[-1].date() < now.date()):
+                    last_bar, bar_fails = bar, 0
+                elif now.time() >= time(9, 40) and not eng.pos and (df.empty or df.index[-1].date() < now.date()):
                     telegram(f"{now:%d %b}: no NIFTY data today, market looks closed. Stopping.")
                     break
                 elif now - bar > timedelta(minutes=8):
                     last_bar = bar  # candle never arrived; skip it
-            if eng.pos and ctx:
-                eng.on_tick(feed.spot(), ctx, now_ist())
-            errors = 0
         except Exception as e:
-            errors += 1
-            print(f"{now:%H:%M:%S} error:", e)
-            if errors == 5:
-                telegram("Warning: data errors, signals may be delayed. Check the window on your computer.")
-            try:
-                feed.relogin()
-            except Exception as e2:
-                print("re-login failed:", e2)
+            ok = False
+            bar_fails += 1
+            if bar_fails >= 6:
+                last_bar, bar_fails = bar, 0   # give up on this bar so the loop cannot get stuck on it
+            problem(e, now)
+        # 2) every loop while a trade is open: stop loss, target and time exit. Runs even if step 1 failed.
+        try:
+            if eng.pos and ctx:
+                tnow = now_ist()
+                try:
+                    last_spot = feed.spot()
+                except Exception:
+                    if tnow.time() < time(15, 12) or last_spot is None:
+                        raise
+                    print("spot unavailable after 15:12, closing on the last known price")
+                eng.on_tick(last_spot, ctx, tnow)
+        except Exception as e:
+            ok = False
+            problem(e, now)
+        if ok:
+            errors = 0
         _time.sleep(15)
 
 
