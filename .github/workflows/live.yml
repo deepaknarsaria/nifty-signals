@@ -2,7 +2,11 @@ name: NIFTY live signals
 
 on:
   schedule:
-    - cron: "46 3 * * 1-5"   # 09:16 IST, Monday to Friday
+    # Three start times because GitHub's timer can be late or skipped. Only one run does the
+    # work; the others wait behind it and exit when they see it finished.
+    - cron: "44 3 * * 1-5"   # 09:14 IST
+    - cron: "58 3 * * 1-5"   # 09:28 IST
+    - cron: "15 4 * * 1-5"   # 09:45 IST
   workflow_dispatch:
     inputs:
       mode:
@@ -13,6 +17,7 @@ on:
 
 permissions:
   contents: write
+  actions: read
 
 concurrency:
   group: live-signals
@@ -42,7 +47,15 @@ jobs:
         run: python live_signals.py --selftest
       - name: Live signals
         if: github.event_name == 'schedule' || inputs.mode == 'live'
-        run: python live_signals.py
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          if [ "$GITHUB_EVENT_NAME" = "schedule" ]; then
+            n=$(gh api "repos/$GITHUB_REPOSITORY/actions/workflows/live.yml/runs?status=success&created=>=$(date -u +%F)" \
+                --jq "[.workflow_runs[] | select(.id != $GITHUB_RUN_ID) | select(((.updated_at|fromdate) - (.run_started_at|fromdate)) > 600)] | length" || echo 0)
+            if [ "${n:-0}" -gt 0 ]; then echo "Live run already done today, skipping."; exit 0; fi
+          fi
+          python live_signals.py
       - name: Save paper trades and option chain data
         if: always() && (github.event_name == 'schedule' || inputs.mode == 'live')
         run: |

@@ -2,7 +2,11 @@ name: NIFTY pre-market brief
 
 on:
   schedule:
-    - cron: "5 3 * * 1-5"   # 08:35 IST start; the script waits and sends at 9:01 and 9:12
+    # GitHub's timer is best-effort and can be late or skipped, so three start times are
+    # listed. The first to run waits and sends at 9:01 and 9:12; the others see it and exit.
+    - cron: "50 2 * * 1-5"   # 08:20 IST
+    - cron: "10 3 * * 1-5"   # 08:40 IST
+    - cron: "27 3 * * 1-5"   # 08:57 IST
   workflow_dispatch:
     inputs:
       mode:
@@ -11,10 +15,18 @@ on:
         type: choice
         options: [test, live]
 
+permissions:
+  contents: read
+  actions: read
+
+concurrency:
+  group: premarket
+  cancel-in-progress: false
+
 jobs:
   run:
     runs-on: ubuntu-latest
-    timeout-minutes: 60
+    timeout-minutes: 75
     env:
       ANGEL_API_KEY: ${{ secrets.ANGEL_API_KEY }}
       ANGEL_CLIENT_CODE: ${{ secrets.ANGEL_CLIENT_CODE }}
@@ -34,4 +46,12 @@ jobs:
       - if: github.event_name == 'workflow_dispatch' && inputs.mode == 'test'
         run: python premarket.py --send-test
       - if: github.event_name == 'schedule' || inputs.mode == 'live'
-        run: python premarket.py
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          if [ "$GITHUB_EVENT_NAME" = "schedule" ]; then
+            n=$(gh api "repos/$GITHUB_REPOSITORY/actions/workflows/premarket.yml/runs?status=success&created=>=$(date -u +%F)" \
+                --jq "[.workflow_runs[] | select(.id != $GITHUB_RUN_ID) | select(((.updated_at|fromdate) - (.run_started_at|fromdate)) > 100)] | length" || echo 0)
+            if [ "${n:-0}" -gt 0 ]; then echo "Brief already sent today, skipping."; exit 0; fi
+          fi
+          python premarket.py
