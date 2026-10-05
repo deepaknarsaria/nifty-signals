@@ -250,7 +250,7 @@ def run_live(symbol):
     last_bar, ctx, brief, errors = None, None, False, 0
     while True:
         now = now_ist()
-        if now.time() >= time(15, 11) and not eng.pos:
+        if now.time() >= time(15, 10, 45) and not eng.pos:
             telegram(eng.summary())
             break
         if now.time() < time(9, 20):

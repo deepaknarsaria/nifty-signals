@@ -14,6 +14,10 @@ on:
         default: selftest
         type: choice
         options: [selftest, live]
+      force:
+        description: "true = run even if it already ran today"
+        default: "false"
+        type: string
 
 permissions:
   contents: write
@@ -26,7 +30,7 @@ concurrency:
 jobs:
   run:
     runs-on: ubuntu-latest
-    timeout-minutes: 358
+    timeout-minutes: 359
     env:
       ANGEL_API_KEY: ${{ secrets.ANGEL_API_KEY }}
       ANGEL_CLIENT_CODE: ${{ secrets.ANGEL_CLIENT_CODE }}
@@ -49,11 +53,12 @@ jobs:
         if: github.event_name == 'schedule' || inputs.mode == 'live'
         env:
           GH_TOKEN: ${{ github.token }}
+          FORCE: ${{ inputs.force }}
         run: |
-          if [ "$GITHUB_EVENT_NAME" = "schedule" ]; then
+          if [ "$FORCE" != "true" ]; then
             n=$(gh api "repos/$GITHUB_REPOSITORY/actions/workflows/live.yml/runs?status=success&created=>=$(date -u +%F)" \
                 --jq "[.workflow_runs[] | select(.id != $GITHUB_RUN_ID) | select(((.updated_at|fromdate) - (.run_started_at|fromdate)) > 600)] | length" || echo 0)
-            if [ "${n:-0}" -gt 0 ]; then echo "Live run already done today, skipping."; exit 0; fi
+            if [ "${n:-0}" -gt 0 ]; then echo "Already done today, skipping."; exit 0; fi
           fi
           python live_signals.py
       - name: Save paper trades and option chain data

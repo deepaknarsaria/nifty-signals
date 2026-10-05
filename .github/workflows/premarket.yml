@@ -14,10 +14,14 @@ on:
         default: test
         type: choice
         options: [test, live]
+      force:
+        description: "true = run even if it already ran today"
+        default: "false"
+        type: string
 
 permissions:
   contents: read
-  actions: read
+  actions: write
 
 concurrency:
   group: premarket
@@ -45,13 +49,23 @@ jobs:
       - run: pip install -r requirements.txt
       - if: github.event_name == 'workflow_dispatch' && inputs.mode == 'test'
         run: python premarket.py --send-test
-      - if: github.event_name == 'schedule' || inputs.mode == 'live'
+      - name: Pre-market brief
+        if: github.event_name == 'schedule' || inputs.mode == 'live'
+        env:
+          GH_TOKEN: ${{ github.token }}
+          FORCE: ${{ inputs.force }}
+        run: |
+          if [ "$FORCE" != "true" ]; then
+            n=$(gh api "repos/$GITHUB_REPOSITORY/actions/workflows/premarket.yml/runs?status=success&created=>=$(date -u +%F)" \
+                --jq "[.workflow_runs[] | select(.id != $GITHUB_RUN_ID) | select(((.updated_at|fromdate) - (.run_started_at|fromdate)) > 100)] | length" || echo 0)
+            if [ "${n:-0}" -gt 0 ]; then echo "Already done today, skipping."; exit 0; fi
+          fi
+          python premarket.py
+      - name: Start the live signal run at 9:14 IST
+        if: always() && (github.event_name == 'schedule' || inputs.mode == 'live')
         env:
           GH_TOKEN: ${{ github.token }}
         run: |
-          if [ "$GITHUB_EVENT_NAME" = "schedule" ]; then
-            n=$(gh api "repos/$GITHUB_REPOSITORY/actions/workflows/premarket.yml/runs?status=success&created=>=$(date -u +%F)" \
-                --jq "[.workflow_runs[] | select(.id != $GITHUB_RUN_ID) | select(((.updated_at|fromdate) - (.run_started_at|fromdate)) > 100)] | length" || echo 0)
-            if [ "${n:-0}" -gt 0 ]; then echo "Brief already sent today, skipping."; exit 0; fi
-          fi
-          python premarket.py
+          # live.yml has its own once-a-day guard, so an extra start is harmless
+          while [ "$(date -u +%H%M%S)" -lt 034430 ]; do sleep 10; done
+          gh api -X POST "repos/$GITHUB_REPOSITORY/actions/workflows/live.yml/dispatches" -f ref=main -f 'inputs[mode]=live'
