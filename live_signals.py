@@ -108,8 +108,10 @@ class Engine:
                  f"Rule: {name}", f"Why: {why}", "",
                  f"Entry premium: Rs {prem:.1f}", f"NIFTY at entry: {spot:,.1f}", "",
                  f"Stop loss: NIFTY {stop:,.1f} (premium about Rs {est(stop, strike, typ):.0f})",
-                 (f"Target: NIFTY {tgt:,.1f} (premium about Rs {est(tgt, strike, typ):.0f})" if tgt
-                  else "Target: none, hold to time exit"),
+                 (f"Book profit: premium Rs {prem * (1 + C.QUICK_PROFIT_PCT):.1f} (+{C.QUICK_PROFIT_PCT:.0%}), or NIFTY {tgt:,.1f}"
+                  if tgt and rule == "B" and C.QUICK_PROFIT_PCT else
+                  f"Target: NIFTY {tgt:,.1f} (premium about Rs {est(tgt, strike, typ):.0f})" if tgt
+                  else "Target: none, hold to time exit (stop trails once in profit)"),
                  f"Time exit: {C.SQUARE_OFF:%H:%M}"]
         cl = self.context_line(ctx)
         lines += (["", cl] if cl else []) + ["", "PAPER TRADE. Not advice."]
@@ -142,6 +144,16 @@ class Engine:
         elif p["tgt"] is not None and ((d > 0 and spot >= p["tgt"]) or (d < 0 and spot <= p["tgt"])):
             self.exit(ctx, spot, now, "target hit")
         else:
+            if p["rule"] == "B" and C.QUICK_PROFIT_PCT:          # book the quick profit on the premium itself
+                try:
+                    q = ctx["quote"](p["strike"], p["typ"])
+                    px = q.get("bid") or q.get("ltp")
+                except Exception as e:
+                    print("premium check failed:", e)
+                    px = None
+                if px and px >= p["prem"] * (1 + C.QUICK_PROFIT_PCT):
+                    self.exit(ctx, spot, now, f"quick profit booked (+{px / p['prem'] - 1:.0%})", px=px)
+                    return
             self.protect(spot, ctx)
 
     def protect(self, spot, ctx):
@@ -172,15 +184,16 @@ class Engine:
                         + (f"Target stays at NIFTY {p['tgt']:,.1f}." if p["tgt"] else "It now trails the price until the time exit.")
                         + "\n\nYou can book the profit here if you prefer. The premium can still slip a little from time decay.")
 
-    def exit(self, ctx, spot, now, reason):
+    def exit(self, ctx, spot, now, reason, px=None):
         p = self.pos
         note = ""
-        try:
-            q = ctx["quote"](p["strike"], p["typ"])
-        except Exception as e:
-            print("exit quote failed:", e)
-            q = {}
-        px = q.get("bid") or q.get("ltp")
+        if px is None:
+            try:
+                q = ctx["quote"](p["strike"], p["typ"])
+            except Exception as e:
+                print("exit quote failed:", e)
+                q = {}
+            px = q.get("bid") or q.get("ltp")
         if not px:                                   # no live price: fall back to the model, and say so
             px, note = round(ctx["est"](spot, p["strike"], p["typ"]), 1), " (estimated, live price unavailable)"
         pnl = (px - p["prem"]) * self.lot

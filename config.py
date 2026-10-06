@@ -74,3 +74,8 @@ HEAVYWEIGHTS = {"HDFCBANK": 13.0, "ICICIBANK": 9.0, "RELIANCE": 8.5, "INFY": 5.0
 # Backtest (3 years): neutral for rule B, equal or slightly better for rule A. Quick small targets tested worse.
 LOCK_AT_R = 1.0
 TRAIL_R = 1.0
+
+# Quick profit (rule B only): close the trade as soon as the option premium is this far above entry.
+# 3-year test: about the same result as holding for the 2R target (hit on roughly 1 trade in 4).
+# Not applied to rule A, where it tested worse than holding. Set to 0 to switch off.
+QUICK_PROFIT_PCT = 0.40

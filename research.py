@@ -51,7 +51,7 @@ def tte(ts, exp, decay):
 
 
 def simulate(days, decide, max_trades=1, exit_time=C.SQUARE_OFF, cooldown=3, itm=0, decay="trading", slip=C.SLIPPAGE_PTS,
-             lock_at=None, trail=None, max_bars=None, min_prog=0.0):
+             lock_at=None, trail=None, max_bars=None, min_prog=0.0, prem_pct=None, prem_pts=None):
     """Exit options (all in multiples of the initial stop distance R, judged on the index):
     lock_at  : once the trade is this far in profit, move the stop to breakeven
     trail    : after locking, keep the stop this far behind the best price reached
@@ -62,10 +62,11 @@ def simulate(days, decide, max_trades=1, exit_time=C.SQUARE_OFF, cooldown=3, itm
         o, h, l, c, t, n = D["o"], D["h"], D["l"], D["c"], D["t"], D["n"]
         pos, pend, ntr, cool = None, None, 0, 0
 
-        def close(i, spot, why):
+        def close(i, spot, why, px=None):
             nonlocal pos, cool
             call = pos["d"] > 0
-            px = max(bs_price(spot, pos["k"], tte(D["idx"][i], pos["exp"], decay), D["vix"][i] / 100, call) - slip, 0.05)
+            if px is None:
+                px = max(bs_price(spot, pos["k"], tte(D["idx"][i], pos["exp"], decay), D["vix"][i] / 100, call) - slip, 0.05)
             cost = costs(pos["prem"], px, QTY)
             out.append(dict(date=D["day"], side="CALL" if call else "PUT", pts=pos["d"] * (spot - pos["spot"]),
                             net=(px - pos["prem"]) * QTY - cost, why=why))
@@ -91,6 +92,12 @@ def simulate(days, decide, max_trades=1, exit_time=C.SQUARE_OFF, cooldown=3, itm
                           pos.get("why") or ("trail" if pos["locked"] else "stop"))
                 elif pos["tgt"] is not None and ((d > 0 and h[i] >= pos["tgt"]) or (d < 0 and l[i] <= pos["tgt"])):
                     close(i, pos["tgt"], "target")
+                elif prem_pct or prem_pts:       # quick-profit target on the option premium itself
+                    want = pos["prem"] * (1 + prem_pct) if prem_pct else pos["prem"] + prem_pts
+                    fav = h[i] if d > 0 else l[i]
+                    best = bs_price(fav, pos["k"], tte(D["idx"][i], pos["exp"], decay), D["vix"][i] / 100, d > 0)
+                    if best - slip >= want:
+                        close(i, fav, "quick_profit", px=want)
             if pos:      # update the protective stop only after the bar, so it takes effect from the next bar
                 d = pos["d"]
                 pos["bars"] += 1
