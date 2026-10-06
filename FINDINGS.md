@@ -45,3 +45,21 @@ Three of the five were 40%+ in profit at some point, which is what led to the +4
 
 ## How to re-run
 `python research.py` (rule families), `python sell_research.py` (selling), `python backtest.py` (base rules).
+
+## Historical run of the 34 strategy-builder structures (6 Oct 2026)
+
+`hist_lab.py`: 737 days (Oct 2023 to Oct 2026), nearest weekly expiry, open 9:20, close 15:10, one lot,
+0.5 point slippage per leg per side, all charges. Premiums are MODELLED (no real history exists for expired contracts).
+
+- No structure made money regularly. Not one hedged structure was profitable over the 3 years.
+- Hedged neutral selling: Short Iron Condor avg Rs -405 a day (44% winning days), Iron Butterfly Rs -353 (28%).
+- Expiry day only: Iron Condor wins 73% of days but still averages Rs -536; Iron Butterfly is closest to break-even (59%, Rs -44).
+- Unhedged selling wins often but loses overall: Short Strangle 70% winning days, Rs -243 a day, worst day Rs -39,321;
+  Short Straddle 67%, Rs -165, worst day Rs -40,573.
+- The only positive rows (Short Synthetic Future, Sell Call, Buy Put) are direction bets, up in only 2 of 4 calendar years.
+- Reason: a hedged structure collects 10 to 20 points of decay in a day and pays about 7 points in spread and charges
+  across 4 legs; one trending day removes many small wins.
+
+`hist_check.py`: model against real option candles, 13 days of September 2026, same structures.
+Correlation 0.98. The model was about Rs 200 a day too harsh on Iron Condor and Iron Butterfly; they were still negative on real prices.
+The 5 and 6 October lab wins (Iron Condor +619, +1,090) were quiet days close to expiry, the best case for this structure.
