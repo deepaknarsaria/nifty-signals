@@ -2,11 +2,12 @@ name: NIFTY pre-market brief
 
 on:
   schedule:
-    # GitHub's timer is best-effort and can be late or skipped, so three start times are
-    # listed. The first to run waits and sends at 9:01 and 9:12; the others see it and exit.
-    - cron: "50 2 * * 1-5"   # 08:20 IST
-    - cron: "10 3 * * 1-5"   # 08:40 IST
-    - cron: "27 3 * * 1-5"   # 08:57 IST
+    # Backup only. The main start is a Claude scheduled task at 8:25 IST.
+    # GitHub's timer has been running about 7 hours late on this repo, so these are spread
+    # through the night. Whichever starts between 3:30 and 9:25 IST waits and sends at 9:01;
+    # anything outside that window, or after the day's brief is already sent, exits at once.
+    - cron: "30 19,20,22 * * *"
+    - cron: "30 0,2 * * *"
   workflow_dispatch:
     inputs:
       mode:
@@ -30,7 +31,7 @@ concurrency:
 jobs:
   run:
     runs-on: ubuntu-latest
-    timeout-minutes: 75
+    timeout-minutes: 350
     env:
       ANGEL_API_KEY: ${{ secrets.ANGEL_API_KEY }}
       ANGEL_CLIENT_CODE: ${{ secrets.ANGEL_CLIENT_CODE }}
@@ -56,8 +57,8 @@ jobs:
           FORCE: ${{ inputs.force }}
         run: |
           if [ "$FORCE" != "true" ]; then
-            n=$(gh api "repos/$GITHUB_REPOSITORY/actions/workflows/premarket.yml/runs?status=success&created=>=$(date -u +%F)" \
-                --jq "[.workflow_runs[] | select(.id != $GITHUB_RUN_ID) | select(((.updated_at|fromdate) - (.run_started_at|fromdate)) > 100)] | length" || echo 0)
+            n=$(gh api "repos/$GITHUB_REPOSITORY/actions/workflows/premarket.yml/runs?status=success&per_page=20" \
+                --jq "[.workflow_runs[] | select(.id != $GITHUB_RUN_ID) | select(.updated_at >= \"$(date -u +%F)\") | select(((.updated_at|fromdate) - (.run_started_at|fromdate)) > 100)] | length" || echo 0)
             if [ "${n:-0}" -gt 0 ]; then echo "Already done today, skipping."; exit 0; fi
           fi
           python premarket.py
@@ -66,6 +67,9 @@ jobs:
         env:
           GH_TOKEN: ${{ github.token }}
         run: |
-          # live.yml has its own once-a-day guard, so an extra start is harmless
+          # Only on a weekday morning. live.yml has its own once-a-day guard, so an extra start is harmless.
+          if [ "$(TZ=Asia/Kolkata date +%u)" -ge 6 ]; then echo "Weekend, not starting."; exit 0; fi
+          t=$(TZ=Asia/Kolkata date +%H%M)
+          if [ "$t" -lt 0855 ] || [ "$t" -gt 1500 ]; then echo "Outside market hours ($t IST), not starting."; exit 0; fi
           while [ "$(date -u +%H%M%S)" -lt 034430 ]; do sleep 10; done
           gh api -X POST "repos/$GITHUB_REPOSITORY/actions/workflows/live.yml/dispatches" -f ref=main -f 'inputs[mode]=live'

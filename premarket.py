@@ -155,12 +155,22 @@ def wait_until(t):
 
 def main(test, to_telegram=False):
     _env()
-    api, m = Angel(), scrip_master()
     send = telegram if (to_telegram or not test) else print
     tag = "[TEST] " if test else ""
     if not test:
-        if now_ist().time() > time(9, 25):
-            return                                     # too late to be useful; the 9:20 brief covers it
+        n = now_ist()
+        if n.weekday() >= 5:
+            print("Weekend, nothing to do.")
+            return
+        if n.time() > time(9, 25):
+            print("Too late for the pre-market brief; the 9:20 brief covers it.")
+            return
+        if n.time() < time(3, 30):
+            print("Started too early to wait for 9:01; a later start will handle it.")
+            return
+        wait_until(time(9, 0, 30))
+    api, m = Angel(), scrip_master()                   # log in only now, so the session is fresh
+    if not test:
         wait_until(time(9, 1))                         # MCX crude and USDINR open at 9:00
     us = us_markets()
     text, (crude, rupee) = brief(angel_snapshot(api, m), us, tag)

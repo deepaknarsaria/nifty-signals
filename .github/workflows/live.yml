@@ -1,12 +1,6 @@
 name: NIFTY live signals
 
 on:
-  schedule:
-    # Three start times because GitHub's timer can be late or skipped. Only one run does the
-    # work; the others wait behind it and exit when they see it finished.
-    - cron: "44 3 * * 1-5"   # 09:14 IST
-    - cron: "58 3 * * 1-5"   # 09:28 IST
-    - cron: "15 4 * * 1-5"   # 09:45 IST
   workflow_dispatch:
     inputs:
       mode:
@@ -61,8 +55,8 @@ jobs:
           RESUME_POS: ${{ inputs.resume }}
         run: |
           if [ "$FORCE" != "true" ]; then
-            n=$(gh api "repos/$GITHUB_REPOSITORY/actions/workflows/live.yml/runs?status=success&created=>=$(date -u +%F)" \
-                --jq "[.workflow_runs[] | select(.id != $GITHUB_RUN_ID) | select(((.updated_at|fromdate) - (.run_started_at|fromdate)) > 600)] | length" || echo 0)
+            n=$(gh api "repos/$GITHUB_REPOSITORY/actions/workflows/live.yml/runs?status=success&per_page=20" \
+                --jq "[.workflow_runs[] | select(.id != $GITHUB_RUN_ID) | select(.updated_at >= \"$(date -u +%F)\") | select(((.updated_at|fromdate) - (.run_started_at|fromdate)) > 600)] | length" || echo 0)
             if [ "${n:-0}" -gt 0 ]; then echo "Already done today, skipping."; exit 0; fi
           fi
           python live_signals.py
