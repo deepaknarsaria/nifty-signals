@@ -81,7 +81,7 @@ class Engine:
             if abs(mv) >= C.LATE_MIN_MOVE:
                 self.enter("A", 1 if mv > 0 else -1, C.LATE_STOP_ATR * last.atr, None,
                            f"day move {mv:+.2%} at 14:00", last.close, ctx, now)
-        elif C.ENTRY_START <= nxt <= C.TREND_ENTRY_END and self.count["B"] < 2:
+        elif C.ENTRY_START <= nxt <= C.TREND_ENTRY_END and self.count["B"] < C.MAX_TREND_PER_DAY:
             for d in (1, -1):
                 if confirmed(sc, i, d) and self.agree(d, ctx):
                     sd = C.STOP_ATR * last.atr

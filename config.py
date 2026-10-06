@@ -79,3 +79,7 @@ TRAIL_R = 1.0
 # 3-year test: about the same result as holding for the 2R target (hit on roughly 1 trade in 4).
 # Not applied to rule A, where it tested worse than holding. Set to 0 to switch off.
 QUICK_PROFIT_PCT = 0.40
+
+# Rule B signals allowed per day. 99 = no cap, every setup is sent (one trade open at a time,
+# with a COOLDOWN_BARS pause after each exit). Was 2 until 6 Oct 2026.
+MAX_TREND_PER_DAY = 99
