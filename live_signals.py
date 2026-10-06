@@ -108,7 +108,7 @@ class Engine:
                  f"Rule: {name}", f"Why: {why}", "",
                  f"Entry premium: Rs {prem:.1f}", f"NIFTY at entry: {spot:,.1f}", "",
                  f"Stop loss: NIFTY {stop:,.1f} (premium about Rs {est(stop, strike, typ):.0f})",
-                 (f"Book profit: premium Rs {prem * (1 + C.QUICK_PROFIT_PCT):.1f} (+{C.QUICK_PROFIT_PCT:.0%}), or NIFTY {tgt:,.1f}"
+                 (f"Profit lock: at premium Rs {prem * (1 + C.QUICK_PROFIT_PCT):.1f} (+{C.QUICK_PROFIT_PCT:.0%}), then trailed"
                   if tgt and rule == "B" and C.QUICK_PROFIT_PCT else
                   f"Target: NIFTY {tgt:,.1f} (premium about Rs {est(tgt, strike, typ):.0f})" if tgt
                   else "Target: none, hold to time exit (stop trails once in profit)"),
@@ -151,9 +151,24 @@ class Engine:
                 except Exception as e:
                     print("premium check failed:", e)
                     px = None
-                if px and px >= p["prem"] * (1 + C.QUICK_PROFIT_PCT):
-                    self.exit(ctx, spot, now, f"quick profit booked (+{px / p['prem'] - 1:.0%})", px=px)
-                    return
+                if px and p.get("ppeak"):                 # profit already locked: trail it
+                    floor = max(p["prem"] * (1 + C.PROFIT_FLOOR), p["ppeak"] * (1 - C.PROFIT_TRAIL))
+                    if px <= floor:
+                        self.exit(ctx, spot, now, f"trailing profit booked ({px / p['prem'] - 1:+.0%})", px=px)
+                        return
+                    p["ppeak"] = max(p["ppeak"], px)
+                elif px and px >= p["prem"] * (1 + C.QUICK_PROFIT_PCT):
+                    if not C.PROFIT_TRAIL:
+                        self.exit(ctx, spot, now, f"quick profit booked (+{px / p['prem'] - 1:.0%})", px=px)
+                        return
+                    p["ppeak"], p["tgt"] = px, None        # lock it and let it run
+                    floor = max(p["prem"] * (1 + C.PROFIT_FLOOR), px * (1 - C.PROFIT_TRAIL))
+                    self.notify(f"PROFIT LOCKED  NIFTY {p['strike']} {p['typ']}\n\n"
+                                f"Premium Rs {px:.1f}, up {px / p['prem'] - 1:.0%} ({(px - p['prem']) * self.lot:+,.0f} per lot)\n\n"
+                                f"Now trailing. It exits if the premium falls back to Rs {floor:.1f}, "
+                                f"which keeps at least +{C.PROFIT_FLOOR:.0%}.\n"
+                                f"That exit level rises as the premium rises ({C.PROFIT_TRAIL:.0%} below the highest price seen).\n\n"
+                                "You can also book it here yourself.")
             self.protect(spot, ctx)
 
     def protect(self, spot, ctx):

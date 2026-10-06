@@ -21,7 +21,8 @@ Rupee figures use modelled option premiums calibrated to real September 2026 pri
 | Exit | Result |
 |---|---|
 | Quick small targets (0.5R, 1R, +25% premium) | Higher win rate, worse overall |
-| Book at +40% premium (rule B) | About equal to holding for 2R. Hit on roughly 1 trade in 4. Live since 7 Oct 2026 |
+| Book everything at +40% premium (rule B) | About equal to holding for 2R. Reached on roughly 1 trade in 4 |
+| At +40% premium, lock +25% and trail 15% below the peak (rule B) | Better than booking at +40% in both periods (Rs -105 vs -165, and -72 vs -164 per trade). Live since 7 Oct 2026 |
 | Move stop to entry once +1R in profit | Neutral for rule B, equal or slightly better for rule A. Live since 7 Oct 2026 |
 | Trailing stops on rule B | Inconsistent between periods |
 | 45-minute time stop | No improvement |

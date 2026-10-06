@@ -83,3 +83,11 @@ QUICK_PROFIT_PCT = 0.40
 # Rule B signals allowed per day. 99 = no cap, every setup is sent (one trade open at a time,
 # with a COOLDOWN_BARS pause after each exit). Was 2 until 6 Oct 2026.
 MAX_TREND_PER_DAY = 99
+
+# Trailing the profit (rule B): once the premium reaches QUICK_PROFIT_PCT above entry, the trade is not
+# closed. Its exit level becomes PROFIT_TRAIL below the highest premium seen, never less than
+# PROFIT_FLOOR above entry. 3-year test: better than booking everything at +40% in both periods
+# (about Rs -105 vs -165 per trade, and -72 vs -164), because the few big winners are kept.
+# Set PROFIT_TRAIL = 0 to go back to booking everything at the quick-profit level.
+PROFIT_TRAIL = 0.15
+PROFIT_FLOOR = 0.25

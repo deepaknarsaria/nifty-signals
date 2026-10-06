@@ -51,7 +51,8 @@ def tte(ts, exp, decay):
 
 
 def simulate(days, decide, max_trades=1, exit_time=C.SQUARE_OFF, cooldown=3, itm=0, decay="trading", slip=C.SLIPPAGE_PTS,
-             lock_at=None, trail=None, max_bars=None, min_prog=0.0, prem_pct=None, prem_pts=None):
+             lock_at=None, trail=None, max_bars=None, min_prog=0.0, prem_pct=None, prem_pts=None,
+             prem_trail=None, prem_floor=0.0):
     """Exit options (all in multiples of the initial stop distance R, judged on the index):
     lock_at  : once the trade is this far in profit, move the stop to breakeven
     trail    : after locking, keep the stop this far behind the best price reached
@@ -92,12 +93,21 @@ def simulate(days, decide, max_trades=1, exit_time=C.SQUARE_OFF, cooldown=3, itm
                           pos.get("why") or ("trail" if pos["locked"] else "stop"))
                 elif pos["tgt"] is not None and ((d > 0 and h[i] >= pos["tgt"]) or (d < 0 and l[i] <= pos["tgt"])):
                     close(i, pos["tgt"], "target")
-                elif prem_pct or prem_pts:       # quick-profit target on the option premium itself
+                elif prem_pct or prem_pts:       # quick-profit level on the option premium itself
                     want = pos["prem"] * (1 + prem_pct) if prem_pct else pos["prem"] + prem_pts
-                    fav = h[i] if d > 0 else l[i]
-                    best = bs_price(fav, pos["k"], tte(D["idx"][i], pos["exp"], decay), D["vix"][i] / 100, d > 0)
-                    if best - slip >= want:
-                        close(i, fav, "quick_profit", px=want)
+                    price = lambda spot: bs_price(spot, pos["k"], tte(D["idx"][i], pos["exp"], decay), D["vix"][i] / 100, d > 0) - slip
+                    fav, adv = (h[i], l[i]) if d > 0 else (l[i], h[i])
+                    if pos.get("ppeak"):         # already past the level: trail the premium (adverse move checked first)
+                        floor = max(pos["prem"] * (1 + prem_floor), pos["ppeak"] * (1 - prem_trail))
+                        if price(adv) <= floor:
+                            close(i, adv, "trail_profit", px=floor)
+                        else:
+                            pos["ppeak"] = max(pos["ppeak"], price(fav))
+                    elif price(fav) >= want:
+                        if prem_trail is None:
+                            close(i, fav, "quick_profit", px=want)
+                        else:                    # do not close: start trailing from here
+                            pos["ppeak"], pos["tgt"] = price(fav), None
             if pos:      # update the protective stop only after the bar, so it takes effect from the next bar
                 d = pos["d"]
                 pos["bars"] += 1
