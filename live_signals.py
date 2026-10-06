@@ -85,7 +85,9 @@ class Engine:
             for d in (1, -1):
                 if confirmed(sc, i, d) and self.agree(d, ctx):
                     sd = C.STOP_ATR * last.atr
-                    self.enter("B", d, sd, sd * C.TARGET_R, f"chart score {int(last.score):+d}/5, stocks and OI agree",
+                    # with profit trailing on, there is no fixed index target: the premium lock and trail decide the exit
+                    self.enter("B", d, sd, None if (C.QUICK_PROFIT_PCT and C.PROFIT_TRAIL) else sd * C.TARGET_R,
+                               f"chart score {int(last.score):+d}/5, stocks and OI agree",
                                last.close, ctx, now)
                     break
 
@@ -109,7 +111,7 @@ class Engine:
                  f"Entry premium: Rs {prem:.1f}", f"NIFTY at entry: {spot:,.1f}", "",
                  f"Stop loss: NIFTY {stop:,.1f} (premium about Rs {est(stop, strike, typ):.0f})",
                  (f"Profit lock: at premium Rs {prem * (1 + C.QUICK_PROFIT_PCT):.1f} (+{C.QUICK_PROFIT_PCT:.0%}), then trailed"
-                  if tgt and rule == "B" and C.QUICK_PROFIT_PCT else
+                  if rule == "B" and C.QUICK_PROFIT_PCT else
                   f"Target: NIFTY {tgt:,.1f} (premium about Rs {est(tgt, strike, typ):.0f})" if tgt
                   else "Target: none, hold to time exit (stop trails once in profit)"),
                  f"Time exit: {C.SQUARE_OFF:%H:%M}"]
@@ -196,7 +198,9 @@ class Engine:
             gain = f"Premium now Rs {px:.1f} vs entry Rs {p['prem']:.1f} ({(px - p['prem']) * self.lot:+,.0f} per lot)\n\n" if px else ""
             self.notify(f"PROFIT UPDATE  NIFTY {p['strike']} {p['typ']}\n\n" + gain +
                         f"Stop loss moved to NIFTY {p['stop']:,.1f} (the entry level).\n"
-                        + (f"Target stays at NIFTY {p['tgt']:,.1f}." if p["tgt"] else "It now trails the price until the time exit.")
+                        + (f"Target stays at NIFTY {p['tgt']:,.1f}." if p["tgt"] else
+                           f"Profit gets locked and trailed once the premium is up {C.QUICK_PROFIT_PCT:.0%}." if p["rule"] == "B"
+                           else "It now trails the price until the time exit.")
                         + "\n\nYou can book the profit here if you prefer. The premium can still slip a little from time decay.")
 
     def exit(self, ctx, spot, now, reason, px=None):
