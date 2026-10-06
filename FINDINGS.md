@@ -30,6 +30,11 @@ Rupee figures use modelled option premiums calibrated to real September 2026 pri
 ## BANKNIFTY
 Same 16 rules tested. Nothing significant. Gap follow was the best (+39 and +50 points in the two periods, borderline).
 
+## Strategy lab (real prices, from 5 Oct 2026)
+`strategy_lab.py` paper-trades 34 ready-made option structures every market day on the recorded option chain
+(open 9:20, close 15:10, real bid and ask, charges deducted). Results accumulate in `lab_results.csv`.
+Do not read anything into it before about 15 days.
+
 ## Cannot be backtested yet
 Option chain (PCR, OI bias, OI walls) and heavyweight stock breadth have no history. Evidence for them
 comes only from `paper_trades.csv` and the `chain/` snapshots this system records each market day.

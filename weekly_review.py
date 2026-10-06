@@ -124,10 +124,20 @@ def main(send, preview=False):
     wtxt, _ = trades_summary(wk)
     atxt, _ = trades_summary(t)
     week_tbl, all_tbl = indicator_table(wk_days), indicator_table()
+    lab_md, lab_top = "No strategy lab results yet.", []
+    if os.path.exists("lab_results.csv"):
+        from strategy_lab import leaderboard
+        lab = pd.read_csv("lab_results.csv", parse_dates=["date"])
+        lb = leaderboard(lab)
+        show = lb.assign(total=lb.total.astype(int), avg=lb.avg.round().astype(int), win=(lb.win * 100).round().astype(int).astype(str) + "%", worst=lb.worst.astype(int))
+        lab_md = f"{lab.date.nunique()} days recorded. Paper results on real prices, 9:20 to 15:10, no stop or target.\n\n" + show.to_markdown()
+        lab_top = [f"{k}: Rs {int(v.total):+,} over {int(v.days)} days ({v.win:.0%} winning days)" for k, v in lb.head(3).iterrows()]
     md = [f"# Weekly review, week of {week_start:%d %b %Y}", "",
           f"Market days recorded this week: {len(wk_days)}", "",
           "## Paper trades this week", "", wtxt.replace("\n", "  \n"), "",
           "## Paper trades since the start", "", atxt.replace("\n", "  \n"), "",
+          "## Strategy lab: hedged structures, running total per lot", "",
+          lab_md, "",
           "## Which indicators were right (next 30 minutes), all recorded days", "",
           all_tbl.to_markdown(index=False) if len(all_tbl) else "No indicator data recorded yet.", "",
           "## This week only", "",
@@ -144,6 +154,7 @@ def main(send, preview=False):
         bad = all_tbl[all_tbl.verdict == "wrong side"].indicator.tolist() if len(all_tbl) else []
         few = int((all_tbl.verdict == "too few to judge").sum()) if len(all_tbl) else 0
         msg = [("[PREVIEW] " if preview else "") + f"WEEKLY REVIEW  week of {week_start:%d %b}", "", "This week", wtxt, "", "Since the start", atxt.split("\n")[0], "",
+               "Strategy lab, best hedged structures so far"] + (lab_top or ["No results yet"]) + ["",
                "Indicators (right over the next 30 min)",
                "Useful: " + (", ".join(good) if good else "none proven yet"),
                "Wrong side: " + (", ".join(bad) if bad else "none"),

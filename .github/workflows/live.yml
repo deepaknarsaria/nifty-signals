@@ -60,6 +60,9 @@ jobs:
             if [ "${n:-0}" -gt 0 ]; then echo "Already done today, skipping."; exit 0; fi
           fi
           python live_signals.py
+      - name: Strategy lab (paper-test option structures on today's recorded prices)
+        if: always() && (github.event_name == 'schedule' || inputs.mode == 'live')
+        run: python strategy_lab.py --send || echo "strategy lab failed"
       - name: Save paper trades and option chain data
         if: always() && (github.event_name == 'schedule' || inputs.mode == 'live')
         run: |
@@ -68,6 +71,7 @@ jobs:
           if [ -f paper_trades.csv ]; then git add -f paper_trades.csv; fi
           if [ -d chain ]; then git add -f chain/; fi
           if [ -d barlog ]; then git add -f barlog/; fi
+          if [ -f lab_results.csv ]; then git add -f lab_results.csv; fi
           git diff --cached --quiet && exit 0
           git commit -m "Live data $(TZ=Asia/Kolkata date +%F)"
           git pull --rebase
