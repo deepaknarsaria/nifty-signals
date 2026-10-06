@@ -67,6 +67,7 @@ jobs:
           git config user.email "actions@users.noreply.github.com"
           if [ -f paper_trades.csv ]; then git add -f paper_trades.csv; fi
           if [ -d chain ]; then git add -f chain/; fi
+          if [ -d barlog ]; then git add -f barlog/; fi
           git diff --cached --quiet && exit 0
           git commit -m "Live data $(TZ=Asia/Kolkata date +%F)"
           git pull --rebase

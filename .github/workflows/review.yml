@@ -1,0 +1,51 @@
+name: NIFTY weekly review
+
+on:
+  schedule:
+    # Friday after the close, plus Saturday as a catch-up. GitHub's timer runs hours late on this
+    # repo, so several times are listed; the script sends only one review per week.
+    - cron: "30 4,10,13 * * 5"
+    - cron: "30 3 * * 6"
+  workflow_dispatch:
+    inputs:
+      preview:
+        description: "true = send a [PREVIEW] now without saving it as this week's review"
+        default: "true"
+        type: string
+
+permissions:
+  contents: write
+  actions: read
+
+concurrency:
+  group: weekly-review
+  cancel-in-progress: false
+
+jobs:
+  run:
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    env:
+      TELEGRAM_BOT_TOKEN: ${{ secrets.TELEGRAM_BOT_TOKEN }}
+      TELEGRAM_CHAT_ID: ${{ secrets.TELEGRAM_CHAT_ID }}
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.11"
+          cache: pip
+      - run: pip install -r requirements.txt
+      - name: Wait for the market to close, then review
+        run: |
+          # Friday before 15:30 IST: the market is still open, so leave it to a later start
+          t=$(TZ=Asia/Kolkata date +%H%M); wd=$(TZ=Asia/Kolkata date +%u)
+          if [ "$GITHUB_EVENT_NAME" = "schedule" ] && [ "$wd" = "5" ] && [ "$t" -lt 1530 ]; then echo "Market still open ($t IST), skipping."; exit 0; fi
+          if [ "${{ inputs.preview }}" = "true" ]; then python weekly_review.py --preview; exit 0; fi
+          python weekly_review.py --send
+          git config user.name "nifty-signals-bot"
+          git config user.email "actions@users.noreply.github.com"
+          if [ -d reviews ]; then git add -f reviews/; fi
+          git diff --cached --quiet && exit 0
+          git commit -m "Weekly review $(TZ=Asia/Kolkata date +%F)"
+          git pull --rebase
+          git push

@@ -360,7 +360,19 @@ def run_live(symbol):
                                  (f"\n\nResistance: biggest call OI at {ctx['call_wall']:.0f}\nSupport: biggest put OI at {ctx['put_wall']:.0f}"
                                   if ctx.get("call_wall") else ""))
                         brief = True
-                    eng.on_bar(add_indicators(df), ctx, now)
+                    ind = add_indicators(df)
+                    try:        # one row per 5-minute bar: what every indicator said, for the weekly review
+                        r = ind.iloc[-1]
+                        os.makedirs("barlog", exist_ok=True)
+                        path = f"barlog/{symbol}_{now.date()}.csv"
+                        row = dict(time=r.name, spot=r.close, score=int(r.score), trend=int(r.c_trend), session=int(r.c_session),
+                                   orb=int(r.c_orb), momentum=int(r.c_momentum), prevday=int(r.c_prevday), rsi=round(float(r.rsi), 1),
+                                   atr=round(float(r.atr), 1), vix=feed.vix, breadth=ctx.get("breadth"), pcr=ctx.get("pcr"),
+                                   oi_bias=ctx.get("oi_bias"), call_wall=ctx.get("call_wall"), put_wall=ctx.get("put_wall"))
+                        pd.DataFrame([row]).to_csv(path, mode="a", header=not os.path.exists(path), index=False)
+                    except Exception as e:
+                        print("barlog failed:", e)
+                    eng.on_bar(ind, ctx, now)
                     last_bar, bar_fails = bar, 0
                 elif now.time() >= time(9, 40) and not eng.pos and (df.empty or df.index[-1].date() < now.date()):
                     telegram(f"{now:%d %b}: no NIFTY data today, market looks closed. Stopping.")
