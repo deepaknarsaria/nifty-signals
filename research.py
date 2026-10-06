@@ -50,7 +50,13 @@ def tte(ts, exp, decay):
     return cal
 
 
-def simulate(days, decide, max_trades=1, exit_time=C.SQUARE_OFF, cooldown=3, itm=0, decay="trading", slip=C.SLIPPAGE_PTS):
+def simulate(days, decide, max_trades=1, exit_time=C.SQUARE_OFF, cooldown=3, itm=0, decay="trading", slip=C.SLIPPAGE_PTS,
+             lock_at=None, trail=None, max_bars=None, min_prog=0.0):
+    """Exit options (all in multiples of the initial stop distance R, judged on the index):
+    lock_at  : once the trade is this far in profit, move the stop to breakeven
+    trail    : after locking, keep the stop this far behind the best price reached
+    max_bars : time stop, close at the next open if after this many bars profit is below min_prog
+    """
     out = []
     for D in days:
         o, h, l, c, t, n = D["o"], D["h"], D["l"], D["c"], D["t"], D["n"]
@@ -74,18 +80,34 @@ def simulate(days, decide, max_trades=1, exit_time=C.SQUARE_OFF, cooldown=3, itm
                 k = round(o[i] / SPEC["step"]) * SPEC["step"] - d * itm * SPEC["step"]
                 prem = bs_price(o[i], k, tte(D["idx"][i], exp, decay), D["vix"][i] / 100, d > 0) + slip
                 pos = dict(d=d, spot=o[i], k=k, exp=exp, prem=prem, stop=o[i] - d * sd,
-                           tgt=(o[i] + d * td) if td else None)
+                           tgt=(o[i] + d * td) if td else None, r=sd, best=o[i], bars=0, locked=False)
                 ntr += 1
             pend = None
             if pos:
                 d = pos["d"]
                 if (d > 0 and l[i] <= pos["stop"]) or (d < 0 and h[i] >= pos["stop"]):
-                    close(i, pos["stop"], "stop")
+                    gapped = (d > 0 and o[i] <= pos["stop"]) or (d < 0 and o[i] >= pos["stop"])
+                    close(i, o[i] if gapped else pos["stop"],
+                          pos.get("why") or ("trail" if pos["locked"] else "stop"))
                 elif pos["tgt"] is not None and ((d > 0 and h[i] >= pos["tgt"]) or (d < 0 and l[i] <= pos["tgt"])):
                     close(i, pos["tgt"], "target")
-            if pos:
+            if pos:      # update the protective stop only after the bar, so it takes effect from the next bar
+                d = pos["d"]
+                pos["bars"] += 1
+                pos["best"] = max(pos["best"], h[i]) if d > 0 else min(pos["best"], l[i])
+                gain = d * (pos["best"] - pos["spot"])
+                if lock_at is not None and gain >= lock_at * pos["r"]:
+                    pos["locked"] = True
+                    new_stop = pos["spot"] if trail is None else pos["best"] - d * trail * pos["r"]
+                    if trail is not None:
+                        new_stop = max(new_stop, pos["spot"]) if d > 0 else min(new_stop, pos["spot"])
+                    pos["stop"] = max(pos["stop"], new_stop) if d > 0 else min(pos["stop"], new_stop)
                 if i == n - 1:
                     close(i, c[i], "day_end")
+                elif max_bars and pos["bars"] >= max_bars and d * (c[i] - pos["spot"]) < min_prog * pos["r"] and not pos["locked"]:
+                    pos["tgt"] = None
+                    pos["stop"] = c[i] + d * 1e9      # forces an exit at the next bar open
+                    pos["why"] = "time_stop"
             elif cool > 0:
                 cool -= 1
             elif ntr < max_trades and i < n - 1 and not math.isnan(D["atr"][i]):
@@ -106,7 +128,7 @@ def base(stop=1.5, r=2.0, flip=1):
             return None
         for d in (1, -1):
             if confirmed(D["sc"], i, d):
-                return (d * flip, stop * D["atr"][i], stop * D["atr"][i] * r)
+                return (d * flip, stop * D["atr"][i], stop * D["atr"][i] * r if r else None)
     return f
 
 

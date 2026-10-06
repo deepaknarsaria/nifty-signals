@@ -100,7 +100,8 @@ class Engine:
         stop, tgt = spot - d * sd, (spot + d * td) if td else None
         est = ctx["est"]
         self.pos = dict(rule=rule, d=d, typ=typ, strike=strike, prem=prem, spot=spot, stop=stop, tgt=tgt,
-                        time=now, breadth=ctx.get("breadth"), oi_bias=ctx.get("oi_bias"), pcr=ctx.get("pcr"))
+                        time=now, breadth=ctx.get("breadth"), oi_bias=ctx.get("oi_bias"), pcr=ctx.get("pcr"),
+                        r=sd, best=spot, locked=False)
         self.count[rule] += 1
         name = "LATE MOMENTUM (tested rule)" if rule == "A" else "TREND + CONFIRMATION (experimental)"
         lines = [f"BUY NIFTY {strike} {typ}", f"Expiry {ctx['expiry']:%d %b}", "",
@@ -131,12 +132,45 @@ class Engine:
         if not p:
             return
         d = p["d"]
+        p.setdefault("r", abs(p["spot"] - p["stop"]))
+        p.setdefault("best", p["spot"])
+        p.setdefault("locked", False)
         if now.time() >= C.SQUARE_OFF:
             self.exit(ctx, spot, now, "time exit")
         elif (d > 0 and spot <= p["stop"]) or (d < 0 and spot >= p["stop"]):
-            self.exit(ctx, spot, now, "stop loss hit")
+            self.exit(ctx, spot, now, "profit-protect stop hit" if p["locked"] else "stop loss hit")
         elif p["tgt"] is not None and ((d > 0 and spot >= p["tgt"]) or (d < 0 and spot <= p["tgt"])):
             self.exit(ctx, spot, now, "target hit")
+        else:
+            self.protect(spot, ctx)
+
+    def protect(self, spot, ctx):
+        """Once a trade is 1R in profit on the index, stop it turning into a loss.
+        Rule B: stop moves to the entry level. Rule A: stop also trails 1R behind the best level reached."""
+        p = self.pos
+        d = p["d"]
+        p["best"] = max(p["best"], spot) if d > 0 else min(p["best"], spot)
+        if d * (p["best"] - p["spot"]) < C.LOCK_AT_R * p["r"]:
+            return
+        new_stop = p["spot"]
+        if p["rule"] == "A":
+            trail = p["best"] - d * C.TRAIL_R * p["r"]
+            new_stop = max(new_stop, trail) if d > 0 else min(new_stop, trail)
+        moved = (new_stop > p["stop"]) if d > 0 else (new_stop < p["stop"])
+        if moved:
+            p["stop"] = new_stop
+        if not p["locked"]:
+            p["locked"] = True
+            try:
+                q = ctx["quote"](p["strike"], p["typ"])
+                px = q.get("bid") or q.get("ltp")
+            except Exception:
+                px = None
+            gain = f"Premium now Rs {px:.1f} vs entry Rs {p['prem']:.1f} ({(px - p['prem']) * self.lot:+,.0f} per lot)\n\n" if px else ""
+            self.notify(f"PROFIT UPDATE  NIFTY {p['strike']} {p['typ']}\n\n" + gain +
+                        f"Stop loss moved to NIFTY {p['stop']:,.1f} (the entry level).\n"
+                        + (f"Target stays at NIFTY {p['tgt']:,.1f}." if p["tgt"] else "It now trails the price until the time exit.")
+                        + "\n\nYou can book the profit here if you prefer. The premium can still slip a little from time decay.")
 
     def exit(self, ctx, spot, now, reason):
         p = self.pos

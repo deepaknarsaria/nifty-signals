@@ -68,3 +68,9 @@ OI_BIAS_MIN = 0.01             # rule B: (put OI change - call OI change) / tota
 # Approximate NIFTY weights (%), top names. Used only for breadth; refresh occasionally.
 HEAVYWEIGHTS = {"HDFCBANK": 13.0, "ICICIBANK": 9.0, "RELIANCE": 8.5, "INFY": 5.0, "BHARTIARTL": 4.7,
                 "LT": 4.0, "ITC": 3.5, "TCS": 3.0, "SBIN": 3.0, "AXISBANK": 3.0, "KOTAKBANK": 2.7, "M&M": 2.6}
+
+# Profit protection (live): once a trade is LOCK_AT_R x its stop distance in profit on the index,
+# the stop moves to the entry level. Rule A then trails TRAIL_R x that distance behind the best level.
+# Backtest (3 years): neutral for rule B, equal or slightly better for rule A. Quick small targets tested worse.
+LOCK_AT_R = 1.0
+TRAIL_R = 1.0
