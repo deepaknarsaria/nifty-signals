@@ -1,0 +1,35 @@
+name: Refresh instrument list
+# Angel's 35 MB instrument file downloads slowly and often breaks, so it is fetched here,
+# away from market hours, and saved in the repo. The brief and live runs read the saved copy.
+on:
+  schedule:
+    - cron: "15 14 * * *"
+    - cron: "15 18 * * *"
+  workflow_dispatch:
+permissions:
+  contents: write
+concurrency:
+  group: instruments
+jobs:
+  refresh:
+    runs-on: ubuntu-24.04
+    timeout-minutes: 90
+    env:
+      REFRESH_INSTRUMENTS: "1"
+      SCRIP_TRIES: "40"
+      PYTHONUNBUFFERED: "1"
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.11"
+      - run: pip install -r requirements.txt
+      - run: python -c "import angel_data as A; print(len(A.scrip_master()), 'rows')"
+      - run: |
+          git config user.name "nifty-signals-bot"
+          git config user.email "actions@users.noreply.github.com"
+          git add -f cache/scrip_fallback.csv cache/scrip_fallback.csv.date
+          git diff --cached --quiet && exit 0
+          git commit -m "Instrument list $(TZ=Asia/Kolkata date +%F)"
+          git pull --rebase
+          git push

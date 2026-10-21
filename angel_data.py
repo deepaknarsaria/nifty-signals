@@ -29,7 +29,7 @@ SCRIP_CACHE = ".scrip_cache_v2.csv"
 SCRIP_FALLBACK = "cache/scrip_fallback.csv"
 
 
-def _download_json(url, tries=8):
+def _download_json(url, tries=int(os.getenv("SCRIP_TRIES", "8"))):
     """Angel's 35 MB instrument file often gets cut off mid-download: resume where it stopped, retry."""
     import json
     print("Downloading instrument list (about 35 MB) ...")
@@ -137,6 +137,9 @@ def scrip_master():
                 return m
         except Exception:
             pass  # damaged cache: download again
+    fresh = _fallback_age() is not None and _fallback_age() <= 3
+    if fresh and not os.getenv("REFRESH_INSTRUMENTS"):             # saved copy from the last 3 days: no slow download
+        return pd.read_csv(SCRIP_FALLBACK, dtype=str)
     try:
         m = pd.DataFrame(_download_json(SCRIP_URL)).astype(str)
     except Exception as e:
@@ -155,7 +158,16 @@ def scrip_master():
     os.replace(tmp, SCRIP_CACHE)  # atomic: a half-written file never becomes the cache
     os.makedirs(os.path.dirname(SCRIP_FALLBACK), exist_ok=True)
     m.to_csv(SCRIP_FALLBACK, index=False)
+    open(SCRIP_FALLBACK + ".date", "w").write(now_ist().date().isoformat())
     return m
+
+
+def _fallback_age():
+    """Days since the saved instrument list was downloaded, or None if there is none."""
+    try:
+        return (now_ist().date() - date.fromisoformat(open(SCRIP_FALLBACK + ".date").read().strip())).days
+    except (OSError, ValueError):
+        return None
 
 
 def fetch(api, token, start, end, chunk_days=90):
