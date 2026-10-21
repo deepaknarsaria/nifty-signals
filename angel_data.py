@@ -26,6 +26,32 @@ def now_ist():
     return datetime.now(ZoneInfo("Asia/Kolkata")).replace(tzinfo=None)
 SCRIP_URL = "https://margincalculator.angelone.in/OpenAPI_File/files/OpenAPIScripMaster.json"
 SCRIP_CACHE = ".scrip_cache_v2.csv"
+SCRIP_FALLBACK = "cache/scrip_fallback.csv"
+
+
+def _download_json(url, tries=8):
+    """Angel's 35 MB instrument file often gets cut off mid-download: resume where it stopped, retry."""
+    import json
+    print("Downloading instrument list (about 35 MB) ...")
+    buf, total = bytearray(), None
+    for k in range(tries):
+        h = {"Range": f"bytes={len(buf)}-"} if buf else {}
+        try:
+            with requests.get(url, headers=h, stream=True, timeout=(15, 60)) as r:
+                if buf and r.status_code != 206:
+                    buf = bytearray()                              # server ignored the resume: start again
+                r.raise_for_status()
+                if total is None or not buf:
+                    cl = r.headers.get("Content-Length")
+                    total = int(cl) + len(buf) if cl else None
+                for chunk in r.iter_content(1 << 20):
+                    buf.extend(chunk)
+            if total is None or len(buf) >= total:
+                return json.loads(bytes(buf))
+        except (requests.RequestException, ValueError) as e:
+            print(f"  try {k + 1}: {type(e).__name__} after {len(buf) >> 20} MB")
+        _time.sleep(2 + 2 * k)
+    raise RuntimeError(f"instrument list incomplete after {tries} tries")
 
 
 def _env():
@@ -111,10 +137,13 @@ def scrip_master():
                 return m
         except Exception:
             pass  # damaged cache: download again
-    print("Downloading instrument list (about 30 MB) ...")
-    r = requests.get(SCRIP_URL, timeout=180)
-    r.raise_for_status()
-    m = pd.DataFrame(r.json()).astype(str)
+    try:
+        m = pd.DataFrame(_download_json(SCRIP_URL)).astype(str)
+    except Exception as e:
+        if os.path.exists(SCRIP_FALLBACK):                       # last good list, kept in the repo
+            print(f"Instrument list download failed ({type(e).__name__}); using saved copy.")
+            return pd.read_csv(SCRIP_FALLBACK, dtype=str)
+        raise
     idx_opts = (m.exch_seg == "NFO") & (m.instrumenttype == "OPTIDX") & m.name.isin(list(C.INSTRUMENTS))
     stocks = (m.exch_seg == "NSE") & m.symbol.isin([s + "-EQ" for s in C.HEAVYWEIGHTS])
     futs = (((m.exch_seg == "NFO") & (m.instrumenttype == "FUTIDX") & m.name.isin(list(C.INSTRUMENTS)))
@@ -124,6 +153,8 @@ def scrip_master():
     tmp = SCRIP_CACHE + ".tmp"
     m.to_csv(tmp, index=False)
     os.replace(tmp, SCRIP_CACHE)  # atomic: a half-written file never becomes the cache
+    os.makedirs(os.path.dirname(SCRIP_FALLBACK), exist_ok=True)
+    m.to_csv(SCRIP_FALLBACK, index=False)
     return m
 
 
