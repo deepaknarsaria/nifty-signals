@@ -35,6 +35,35 @@ FIELDS = ["date", "rule", "side", "strike", "expiry", "entry_time", "entry_spot"
           "exit_time", "exit_spot", "exit_prem", "reason", "pnl_per_lot", "breadth", "oi_bias", "pcr"]
 
 
+SPREAD_LOG = "spread_trades.csv"
+SPREAD_FIELDS = ["date", "rule", "structure", "legs", "entry_time", "entry_net", "exit_time", "exit_net", "reason",
+                 "pnl_per_lot", "max_loss_per_lot", "naked_pnl_per_lot"]
+
+
+def spread_plans(d, atm, width):
+    """Hedged versions of a signal. d=+1 bullish, -1 bearish. Legs: (qty, strike, type), qty>0 buy."""
+    if d > 0:
+        return {"Bull Put Spread (credit)": [(-1, atm, "PE"), (1, atm - width, "PE")],
+                "Bull Call Spread (debit)": [(1, atm, "CE"), (-1, atm + width, "CE")]}
+    return {"Bear Call Spread (credit)": [(-1, atm, "CE"), (1, atm + width, "CE")],
+            "Bear Put Spread (debit)": [(1, atm, "PE"), (-1, atm - width, "PE")]}
+
+
+def leg_prices(quote, legs, opening):
+    """Fill price per leg: opening buys pay the ask, sells get the bid; closing is the reverse. None if a price is missing."""
+    out = []
+    for q, k, t in legs:
+        try:
+            r = quote(k, t)
+        except Exception:
+            return None
+        px = (r.get("ask") if (q > 0) == opening else r.get("bid")) or r.get("ltp")
+        if not px:
+            return None
+        out.append(float(px))
+    return out
+
+
 def telegram(text):
     tok, chat = os.getenv("TELEGRAM_BOT_TOKEN"), os.getenv("TELEGRAM_CHAT_ID")
     print("\n" + text + "\n")
@@ -115,9 +144,31 @@ class Engine:
                   f"Target: NIFTY {tgt:,.1f} (premium about Rs {est(tgt, strike, typ):.0f})" if tgt
                   else "Target: none, hold to time exit (stop trails once in profit)"),
                  f"Time exit: {C.SQUARE_OFF:%H:%M}"]
+        lines += self.hedge_lines(d, strike, ctx)
         cl = self.context_line(ctx)
         lines += (["", cl] if cl else []) + ["", "PAPER TRADE. Not advice."]
         self.notify("\n".join(lines))
+
+    def hedge_lines(self, d, atm, ctx):
+        """Price the hedged versions of this signal, remember them for the exit, return alert lines."""
+        self.pos["spreads"] = {}
+        w = C.SPREAD_WIDTH
+        out = ["", f"HEDGED OPTION ({w} points wide, same entry and exit)"]
+        for n, (name, legs) in enumerate(spread_plans(d, atm, w).items()):
+            px = leg_prices(ctx["quote"], legs, True)
+            if not px:
+                continue
+            net = sum(q * p for (q, _, _), p in zip(legs, px))          # > 0 debit paid, < 0 credit received
+            maxloss = (w - (-net)) * self.lot if net < 0 else net * self.lot
+            self.pos["spreads"][name] = dict(legs=legs, px=px, net=net, maxloss=maxloss)
+            act = " + ".join(f"{'SELL' if q < 0 else 'BUY'} {k} {t} @ {p:.1f}" for (q, k, t), p in zip(legs, px))
+            money = f"credit Rs {-net:.1f}" if net < 0 else f"cost Rs {net:.1f}"
+            out += [("Preferred: " if n == 0 else "Or: ") + name, act,
+                    f"Net {money}, max loss Rs {maxloss:,.0f} per lot"]
+        if len(out) == 2:
+            return []
+        out.append("Credit spread did best in the 14 days tested so far (72% winners). Margin is needed for the sold leg.")
+        return out
 
     @staticmethod
     def context_line(ctx):
@@ -231,7 +282,33 @@ class Engine:
         self.notify(f"EXIT NIFTY {p['strike']} {p['typ']}\nReason: {reason}\n\n"
                     f"Premium: Rs {p['prem']:.1f} -> Rs {px:.1f}{note}\nNIFTY: {p['spot']:,.1f} -> {spot:,.1f}\n\n"
                     f"Result: Rs {pnl:+,.0f} per lot ({self.lot} qty), before charges")
+        self.close_spreads(p, ctx, now, reason, round(pnl))
         self.pos, self.cool = None, C.COOLDOWN_BARS
+
+    def close_spreads(self, p, ctx, now, reason, naked):
+        lines = []
+        for name, sp in (p.get("spreads") or {}).items():
+            xp = leg_prices(ctx["quote"], sp["legs"], False)
+            if not xp:
+                continue
+            pts = sum(q * (b - a) for (q, _, _), a, b in zip(sp["legs"], sp["px"], xp))
+            pnl = round(pts * self.lot)
+            lines.append(f"{name}: Rs {pnl:+,} per lot")
+            row = dict(date=now.date(), rule=p["rule"], structure=name,
+                       legs=" ".join(f"{q:+d}x{k}{t}" for q, k, t in sp["legs"]), entry_time=p["time"].strftime("%H:%M:%S"),
+                       entry_net=round(sp["net"], 2), exit_time=now.strftime("%H:%M:%S"),
+                       exit_net=round(sum(q * b for (q, _, _), b in zip(sp["legs"], xp)), 2), reason=reason,
+                       pnl_per_lot=pnl, max_loss_per_lot=round(sp["maxloss"]), naked_pnl_per_lot=naked)
+            if self.log:
+                path = os.path.join(os.path.dirname(self.log) or ".", SPREAD_LOG)
+                new = not os.path.exists(path)
+                with open(path, "a", newline="") as f:
+                    w = csv.DictWriter(f, fieldnames=SPREAD_FIELDS)
+                    if new:
+                        w.writeheader()
+                    w.writerow(row)
+        if lines:
+            self.notify("EXIT HEDGED VERSION (close both legs)\n\n" + "\n".join(lines) + "\n\nBefore charges. Paper trade.")
 
     def summary(self):
         if not self.done:

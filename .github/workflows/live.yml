@@ -72,6 +72,7 @@ jobs:
           if [ -d chain ]; then git add -f chain/; fi
           if [ -d barlog ]; then git add -f barlog/; fi
           if [ -f lab_results.csv ]; then git add -f lab_results.csv; fi
+          if [ -f spread_trades.csv ]; then git add -f spread_trades.csv; fi
           if [ -f cache/scrip_fallback.csv.date ]; then git add -f cache/; fi
           git diff --cached --quiet && exit 0
           git commit -m "Live data $(TZ=Asia/Kolkata date +%F)"

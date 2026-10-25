@@ -91,3 +91,6 @@ MAX_TREND_PER_DAY = 99
 # Set PROFIT_TRAIL = 0 to go back to booking everything at the quick-profit level.
 PROFIT_TRAIL = 0.15
 PROFIT_FLOOR = 0.25
+
+# hedged version of every signal: spread width in points (200 did best on real prices, Oct 2026)
+SPREAD_WIDTH = 200

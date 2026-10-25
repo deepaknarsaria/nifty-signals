@@ -63,3 +63,11 @@ Three of the five were 40%+ in profit at some point, which is what led to the +4
 `hist_check.py`: model against real option candles, 13 days of September 2026, same structures.
 Correlation 0.98. The model was about Rs 200 a day too harsh on Iron Condor and Iron Butterfly; they were still negative on real prices.
 The 5 and 6 October lab wins (Iron Condor +619, +1,090) were quiet days close to expiry, the best case for this structure.
+
+## Signals as spreads, real prices (25 Oct 2026, `spread_check.py`)
+
+Every paper signal 5 to 23 Oct re-done as a 2-leg spread on the recorded bid/ask, same entry and exit, after charges.
+Rule B, 25 trades, 200 points wide: credit spread (Bull Put / Bear Call) +Rs 16,730, 72% winners, worst Rs -1,122;
+debit spread (Bull Call / Bear Put) +Rs 13,936, 52%; naked buy +Rs 12,770, 48%, worst Rs -2,935.
+From 26 Oct every alert also shows both spreads; their results go to spread_trades.csv.
+Only 14 days; a credit spread's full loss (about Rs 10,000 per lot at 200 wide) is larger than a debit spread's (about Rs 3,000).
