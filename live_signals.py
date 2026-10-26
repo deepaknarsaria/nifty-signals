@@ -318,6 +318,111 @@ class Engine:
                 + "\n".join(f"{r['strike']} {r['side']} (rule {r['rule']}): {r['reason']}, Rs {r['pnl_per_lot']:+,}" for r in self.done))
 
 
+class HedgeEngine:
+    """Rule H: stand-alone credit spreads (Bull Put / Bear Call), PAPER ONLY.
+    Entry 9:45 to 13:30: chart score at least +/-2 on two straight 5-min closes and NIFTY on the same side of
+    its session average. Sell the ATM option on the opposite side, buy one 200 points further out.
+    Exit: half the credit earned, NIFTY crosses the 1.5 ATR stop, or 15:10. At most 2 a day, one at a time.
+    Tested on 12 recorded days with real bid/ask (Oct 2026): 17 trades, 65% winners. Small sample."""
+    FIELDS = ["date", "structure", "short", "long", "entry_time", "entry_spot", "credit", "exit_time", "exit_spot",
+              "exit_cost", "reason", "pnl_per_lot", "max_loss_per_lot"]
+
+    def __init__(self, notify, lot, step, log="hedge_trades.csv"):
+        self.notify, self.lot, self.step, self.log = notify, lot, step, log
+        self.pos, self.n, self.cool, self.done, self.last_chk = None, 0, 0, [], None
+
+    def on_bar(self, ind, ctx, now):
+        if self.pos:
+            return
+        if self.cool:
+            self.cool -= 1
+            return
+        today = ind[ind.index.date == ind.index[-1].date()]
+        if len(today) < 2 or self.n >= C.HEDGE_MAX_PER_DAY:
+            return
+        last, prev = today.iloc[-1], today.iloc[-2]
+        nxt = (last.name + timedelta(minutes=5)).time()
+        if not (C.HEDGE_START <= nxt <= C.HEDGE_END) or pd.isna(last.atr):
+            return
+        for d in (1, -1):
+            if d * last.score >= 2 and d * prev.score >= 2 and d * last.c_session > 0:
+                self.enter(d, last, ctx, now)
+                return
+
+    def enter(self, d, bar, ctx, now):
+        w, ty = C.SPREAD_WIDTH, ("PE" if d > 0 else "CE")
+        ks = round(bar.close / self.step) * self.step
+        kl = ks - d * w
+        legs = [(-1, ks, ty), (1, kl, ty)]
+        px = leg_prices(ctx["quote"], legs, True)
+        if not px or px[0] <= px[1]:
+            return
+        credit = px[0] - px[1]
+        stop = bar.close - d * C.STOP_ATR * bar.atr
+        name = "BULL PUT SPREAD" if d > 0 else "BEAR CALL SPREAD"
+        self.pos = dict(d=d, name=name, ty=ty, ks=ks, kl=kl, s0=px[0], l0=px[1], credit=credit, stop=stop, spot=bar.close, time=now)
+        self.n += 1
+        self.notify("\n".join([
+            f"HEDGED TRADE: {name} (credit)", f"Expiry {ctx['expiry']:%d %b}", "",
+            f"SELL NIFTY {ks} {ty} @ Rs {px[0]:.1f}", f"BUY NIFTY {kl} {ty} @ Rs {px[1]:.1f}  (protection)", "",
+            f"Credit: Rs {credit:.1f} = Rs {credit * self.lot:,.0f} per lot",
+            f"Max loss: Rs {(w - credit) * self.lot:,.0f} per lot (only if NIFTY closes beyond {kl})", "",
+            f"Why: chart score {int(bar.score):+d}/5 for two bars, NIFTY {'above' if d > 0 else 'below'} its session average",
+            f"NIFTY at entry: {bar.close:,.1f}", "",
+            f"Book profit: when the spread costs Rs {credit * (1 - C.HEDGE_TAKE):.1f} to close (+Rs {credit * C.HEDGE_TAKE * self.lot:,.0f})",
+            f"Stop: NIFTY {stop:,.1f}", f"Time exit: {C.SQUARE_OFF:%H:%M}", "",
+            "Margin is needed for the sold leg.", "", "PAPER TRADE. Rule H, experimental. Not advice."]))
+
+    def on_tick(self, spot, ctx, now):
+        p = self.pos
+        if not p:
+            return
+        d = p["d"]
+        if now.time() >= C.SQUARE_OFF:
+            return self.exit(spot, ctx, now, "time exit")
+        if d * (spot - p["stop"]) <= 0:
+            return self.exit(spot, ctx, now, "stop loss hit")
+        if self.last_chk and now - self.last_chk < timedelta(seconds=60):
+            return
+        self.last_chk = now
+        xp = leg_prices(ctx["quote"], [(-1, p["ks"], p["ty"]), (1, p["kl"], p["ty"])], False)
+        if xp and xp[0] - xp[1] <= p["credit"] * (1 - C.HEDGE_TAKE):
+            self.exit(spot, ctx, now, f"profit booked ({C.HEDGE_TAKE:.0%} of credit)", xp)
+
+    def exit(self, spot, ctx, now, reason, xp=None):
+        p = self.pos
+        xp = xp or leg_prices(ctx["quote"], [(-1, p["ks"], p["ty"]), (1, p["kl"], p["ty"])], False)
+        if not xp:
+            cost = max(p["credit"] - (spot - p["spot"]) * p["d"] * 0.5, 0)        # rough fallback, flagged below
+            note = " (estimated, live price unavailable)"
+        else:
+            cost, note = xp[0] - xp[1], ""
+        pnl = round((p["credit"] - cost) * self.lot)
+        row = dict(date=now.date(), structure=p["name"].title(), short=f"{p['ks']}{p['ty']}", long=f"{p['kl']}{p['ty']}",
+                   entry_time=p["time"].strftime("%H:%M:%S"), entry_spot=round(p["spot"], 1), credit=round(p["credit"], 2),
+                   exit_time=now.strftime("%H:%M:%S"), exit_spot=round(spot, 1), exit_cost=round(cost, 2), reason=reason + note,
+                   pnl_per_lot=pnl, max_loss_per_lot=round((C.SPREAD_WIDTH - p["credit"]) * self.lot))
+        self.done.append(row)
+        if self.log:
+            new = not os.path.exists(self.log)
+            with open(self.log, "a", newline="") as f:
+                w = csv.DictWriter(f, fieldnames=self.FIELDS)
+                if new:
+                    w.writeheader()
+                w.writerow(row)
+        self.notify(f"EXIT {p['name']}  {p['ks']}/{p['kl']} {p['ty']}\nReason: {reason}\n\n"
+                    f"Buy back {p['ks']} {p['ty']}, sell {p['kl']} {p['ty']}\n"
+                    f"Credit Rs {p['credit']:.1f} -> cost to close Rs {cost:.1f}{note}\nNIFTY: {p['spot']:,.1f} -> {spot:,.1f}\n\n"
+                    f"Result: Rs {pnl:+,} per lot, before charges")
+        self.pos, self.cool = None, C.COOLDOWN_BARS
+
+    def summary(self):
+        if not self.done:
+            return ""
+        return (f"\n\nHedged trades (rule H): Rs {sum(r['pnl_per_lot'] for r in self.done):+,} per lot\n"
+                + "\n".join(f"{r['structure']} {r['short']}/{r['long']}: {r['reason']}, Rs {r['pnl_per_lot']:+,}" for r in self.done))
+
+
 # ------------------------------------------------------------------ live feed
 class Live:
     def __init__(self, symbol):
@@ -400,6 +505,7 @@ def run_live(symbol):
     _env()
     feed = Live(symbol)
     eng = Engine(telegram, feed.lot, feed.spec["step"])
+    hed = HedgeEngine(telegram, feed.lot, feed.spec["step"])
     resume = os.getenv("RESUME_POS", "").strip()
     if resume:      # restarted mid-day: keep tracking the paper trade that was open
         p = json.loads(resume)
@@ -431,8 +537,8 @@ def run_live(symbol):
 
     while True:
         now = now_ist()
-        if now.time() >= time(15, 10, 45) and not eng.pos:
-            telegram(eng.summary())
+        if now.time() >= time(15, 10, 45) and not eng.pos and not hed.pos:
+            telegram(eng.summary() + hed.summary())
             break
         if now.time() < time(9, 20):
             _time.sleep(20)
@@ -469,6 +575,10 @@ def run_live(symbol):
                     except Exception as e:
                         print("barlog failed:", e)
                     eng.on_bar(ind, ctx, now)
+                    try:
+                        hed.on_bar(ind, ctx, now)
+                    except Exception as e:
+                        print("hedge rule failed:", e)
                     last_bar, bar_fails = bar, 0
                 elif now.time() >= time(9, 40) and not eng.pos and (df.empty or df.index[-1].date() < now.date()):
                     telegram(f"{now:%d %b}: no NIFTY data today, market looks closed. Stopping.")
@@ -483,7 +593,7 @@ def run_live(symbol):
             problem(e, now)
         # 2) every loop while a trade is open: stop loss, target and time exit. Runs even if step 1 failed.
         try:
-            if eng.pos and ctx:
+            if (eng.pos or hed.pos) and ctx:
                 tnow = now_ist()
                 try:
                     last_spot = feed.spot()
@@ -492,6 +602,7 @@ def run_live(symbol):
                         raise
                     print("spot unavailable after 15:12, closing on the last known price")
                 eng.on_tick(last_spot, ctx, tnow)
+                hed.on_tick(last_spot, ctx, tnow)
         except Exception as e:
             ok = False
             problem(e, now)

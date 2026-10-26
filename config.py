@@ -94,3 +94,9 @@ PROFIT_FLOOR = 0.25
 
 # hedged version of every signal: spread width in points (200 did best on real prices, Oct 2026)
 SPREAD_WIDTH = 200
+
+# rule H: stand-alone credit spreads (paper)
+HEDGE_START = time(9, 45)
+HEDGE_END = time(13, 30)
+HEDGE_MAX_PER_DAY = 2
+HEDGE_TAKE = 0.5   # book when half the credit is earned
