@@ -1,0 +1,4 @@
+date,rule,structure,legs,entry_time,entry_spot,credit,exit_time,exit_spot,exit_cost,reason,pnl_per_lot,max_loss_per_lot
+2026-10-26,H,Bull Put Spread,-1x22700PE +1x22500PE,10:16:10,22691.3,57.9,10:39:06,22603.5,73.65,stop loss hit,-1024,9237
+2026-10-26,H,Bull Put Spread,-1x22600PE +1x22400PE,10:55:21,22621.1,49.45,11:34:05,22538.5,72.9,stop loss hit,-1524,9786
+2026-10-26,N,Iron Condor,-1x22700CE -1x22400PE +1x22900CE +1x22200PE,11:50:20,22544.4,78.05,15:10:23,22712.9,105.6,time exit,-1791,7927
