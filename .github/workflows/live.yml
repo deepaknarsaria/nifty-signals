@@ -58,6 +58,10 @@ jobs:
             n=$(gh api "repos/$GITHUB_REPOSITORY/actions/workflows/live.yml/runs?status=success&per_page=20" \
                 --jq "[.workflow_runs[] | select(.id != $GITHUB_RUN_ID) | select(.updated_at >= \"$(date -u -d "$(TZ=Asia/Kolkata date +%F) 00:00 +0530" +%FT%TZ)\") | select(((.updated_at|fromdate) - (.run_started_at|fromdate)) > 600)] | length" || echo 0)
             if [ "${n:-0}" -gt 0 ]; then echo "Already done today, skipping."; exit 0; fi
+            # another live run already going (for example a late GitHub timer): do not send duplicate alerts
+            r=$(gh api "repos/$GITHUB_REPOSITORY/actions/workflows/live.yml/runs?status=in_progress&per_page=20" \
+                --jq "[.workflow_runs[] | select(.id != $GITHUB_RUN_ID) | select(.id < $GITHUB_RUN_ID)] | length" || echo 0)
+            if [ "${r:-0}" -gt 0 ]; then echo "Another live run is already running, skipping."; exit 0; fi
           fi
           python live_signals.py
       - name: Strategy lab (paper-test option structures on today's recorded prices)

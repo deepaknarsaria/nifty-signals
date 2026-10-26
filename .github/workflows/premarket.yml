@@ -70,6 +70,6 @@ jobs:
           # Only on a weekday morning. live.yml has its own once-a-day guard, so an extra start is harmless.
           if [ "$(TZ=Asia/Kolkata date +%u)" -ge 6 ]; then echo "Weekend, not starting."; exit 0; fi
           t=$(TZ=Asia/Kolkata date +%H%M)
-          if [ "$t" -lt 0855 ] || [ "$t" -gt 1500 ]; then echo "Outside market hours ($t IST), not starting."; exit 0; fi
+          if [ "$t" -lt 0855 ] || [ "$t" -gt 0930 ]; then echo "Not a morning start ($t IST), not starting the live run."; exit 0; fi
           while [ "$(date -u +%H%M%S)" -lt 034430 ]; do sleep 10; done
           gh api -X POST "repos/$GITHUB_REPOSITORY/actions/workflows/live.yml/dispatches" -f ref=main -f 'inputs[mode]=live'
