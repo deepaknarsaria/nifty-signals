@@ -319,17 +319,25 @@ class Engine:
 
 
 class HedgeEngine:
-    """Rule H: stand-alone credit spreads (Bull Put / Bear Call), PAPER ONLY.
-    Entry 9:45 to 13:30: chart score at least +/-2 on two straight 5-min closes and NIFTY on the same side of
-    its session average. Sell the ATM option on the opposite side, buy one 200 points further out.
-    Exit: half the credit earned, NIFTY crosses the 1.5 ATR stop, or 15:10. At most 2 a day, one at a time.
-    Tested on 12 recorded days with real bid/ask (Oct 2026): 17 trades, 65% winners. Small sample."""
-    FIELDS = ["date", "structure", "short", "long", "entry_time", "entry_spot", "credit", "exit_time", "exit_spot",
+    """Hedged option alerts, PAPER ONLY. One hedged position at a time.
+
+    Rule H (trend, credit spread): 9:45 to 13:30, chart score at least +/-2 on two straight 5-min closes and
+      NIFTY on the same side of its session average. Bullish: Bull Put Spread. Bearish: Bear Call Spread.
+      The debit spread (Bull Call / Bear Put) is shown as the alternative.
+      Exit: half the credit earned, NIFTY crosses the 1.5 ATR stop, or 15:10. At most 2 a day.
+      12 recorded days, real bid/ask: 17 trades, 65% winners.
+    Rule N (range day, Iron Condor = hedged strangle): 10:30 to 13:30, chart score within +/-1 for the last
+      4 bars (20 minutes). Sell 150-point OTM call and put, buy 350-point OTM wings.
+      Exit: 30% of credit earned, loss of 50% of credit, or 15:10. At most 1 a day.
+      Only 3 setups in 12 days, so effectively untested.
+    """
+    FIELDS = ["date", "rule", "structure", "legs", "entry_time", "entry_spot", "credit", "exit_time", "exit_spot",
               "exit_cost", "reason", "pnl_per_lot", "max_loss_per_lot"]
 
     def __init__(self, notify, lot, step, log="hedge_trades.csv"):
         self.notify, self.lot, self.step, self.log = notify, lot, step, log
-        self.pos, self.n, self.cool, self.done, self.last_chk = None, 0, 0, [], None
+        self.pos, self.cool, self.done, self.last_chk = None, 0, [], None
+        self.n = {"H": 0, "N": 0}
 
     def on_bar(self, ind, ctx, now):
         if self.pos:
@@ -338,70 +346,116 @@ class HedgeEngine:
             self.cool -= 1
             return
         today = ind[ind.index.date == ind.index[-1].date()]
-        if len(today) < 2 or self.n >= C.HEDGE_MAX_PER_DAY:
+        if len(today) < 4:
             return
         last, prev = today.iloc[-1], today.iloc[-2]
         nxt = (last.name + timedelta(minutes=5)).time()
-        if not (C.HEDGE_START <= nxt <= C.HEDGE_END) or pd.isna(last.atr):
+        if pd.isna(last.atr):
             return
-        for d in (1, -1):
-            if d * last.score >= 2 and d * prev.score >= 2 and d * last.c_session > 0:
-                self.enter(d, last, ctx, now)
-                return
+        if C.HEDGE_START <= nxt <= C.HEDGE_END and self.n["H"] < C.HEDGE_MAX_PER_DAY:
+            for d in (1, -1):
+                if d * last.score >= 2 and d * prev.score >= 2 and d * last.c_session > 0:
+                    return self.enter_trend(d, last, ctx, now)
+        if C.RANGE_START <= nxt <= C.HEDGE_END and self.n["N"] < 1 and (today.score.iloc[-C.RANGE_BARS:].abs() <= 1).all():
+            self.enter_range(last, ctx, now)
 
-    def enter(self, d, bar, ctx, now):
-        w, ty = C.SPREAD_WIDTH, ("PE" if d > 0 else "CE")
-        ks = round(bar.close / self.step) * self.step
-        kl = ks - d * w
-        legs = [(-1, ks, ty), (1, kl, ty)]
+    def _open(self, rule, name, legs, ctx, now, bar, **extra):
         px = leg_prices(ctx["quote"], legs, True)
-        if not px or px[0] <= px[1]:
-            return
-        credit = px[0] - px[1]
-        stop = bar.close - d * C.STOP_ATR * bar.atr
+        if not px:
+            return None
+        credit = -sum(q * p for (q, _, _), p in zip(legs, px))
+        if credit <= 0:
+            return None
+        widths = [abs(legs[i][1] - legs[j][1]) for i in range(len(legs)) for j in range(len(legs))
+                  if legs[i][2] == legs[j][2] and legs[i][0] != legs[j][0]]
+        maxloss = (max(widths) - credit) * self.lot
+        self.pos = dict(rule=rule, name=name, legs=legs, px=px, credit=credit, maxloss=maxloss, spot=bar.close, time=now, **extra)
+        self.n[rule] += 1
+        return px
+
+    def _legs_text(self, legs, px):
+        return [f"{'SELL' if q < 0 else 'BUY'} NIFTY {k} {t} @ Rs {p:.1f}" + ("" if q < 0 else "  (protection)")
+                for (q, k, t), p in zip(legs, px)]
+
+    def enter_trend(self, d, bar, ctx, now):
+        w, ty = C.SPREAD_WIDTH, ("PE" if d > 0 else "CE")
+        atm = round(bar.close / self.step) * self.step
         name = "BULL PUT SPREAD" if d > 0 else "BEAR CALL SPREAD"
-        self.pos = dict(d=d, name=name, ty=ty, ks=ks, kl=kl, s0=px[0], l0=px[1], credit=credit, stop=stop, spot=bar.close, time=now)
-        self.n += 1
-        self.notify("\n".join([
-            f"HEDGED TRADE: {name} (credit)", f"Expiry {ctx['expiry']:%d %b}", "",
-            f"SELL NIFTY {ks} {ty} @ Rs {px[0]:.1f}", f"BUY NIFTY {kl} {ty} @ Rs {px[1]:.1f}  (protection)", "",
-            f"Credit: Rs {credit:.1f} = Rs {credit * self.lot:,.0f} per lot",
-            f"Max loss: Rs {(w - credit) * self.lot:,.0f} per lot (only if NIFTY closes beyond {kl})", "",
+        legs = [(-1, atm, ty), (1, atm - d * w, ty)]
+        stop = bar.close - d * C.STOP_ATR * bar.atr
+        px = self._open("H", name, legs, ctx, now, bar, d=d, stop=stop)
+        if not px:
+            return
+        p = self.pos
+        lines = [f"HEDGED TRADE: {name} (credit)", f"Expiry {ctx['expiry']:%d %b}", ""] + self._legs_text(legs, px) + [
+            "", f"Credit: Rs {p['credit']:.1f} = Rs {p['credit'] * self.lot:,.0f} per lot",
+            f"Max loss: Rs {p['maxloss']:,.0f} per lot", "",
             f"Why: chart score {int(bar.score):+d}/5 for two bars, NIFTY {'above' if d > 0 else 'below'} its session average",
-            f"NIFTY at entry: {bar.close:,.1f}", "",
-            f"Book profit: when the spread costs Rs {credit * (1 - C.HEDGE_TAKE):.1f} to close (+Rs {credit * C.HEDGE_TAKE * self.lot:,.0f})",
-            f"Stop: NIFTY {stop:,.1f}", f"Time exit: {C.SQUARE_OFF:%H:%M}", "",
-            "Margin is needed for the sold leg.", "", "PAPER TRADE. Rule H, experimental. Not advice."]))
+            f"NIFTY at entry: {bar.close:,.1f}", "", "WHEN TO BOOK",
+            f"Profit: when the spread costs Rs {p['credit'] * (1 - C.HEDGE_TAKE):.1f} to close (+Rs {p['credit'] * C.HEDGE_TAKE * self.lot:,.0f})",
+            f"Stop: NIFTY {stop:,.1f}", f"Otherwise exit at {C.SQUARE_OFF:%H:%M}"]
+        dty = "CE" if d > 0 else "PE"
+        dl = [(1, atm, dty), (-1, atm + d * w, dty)]
+        dp = leg_prices(ctx["quote"], dl, True)
+        if dp:
+            cost = dp[0] - dp[1]
+            lines += ["", f"Alternative (debit, smaller max loss): {'BULL CALL' if d > 0 else 'BEAR PUT'} SPREAD",
+                      f"BUY {atm} {dty} @ {dp[0]:.1f} + SELL {atm + d * w} {dty} @ {dp[1]:.1f}",
+                      f"Cost Rs {cost * self.lot:,.0f} per lot = max loss. Max profit Rs {(w - cost) * self.lot:,.0f}"]
+        self.notify("\n".join(lines + ["", "Margin is needed for sold legs.", "PAPER TRADE. Rule H, experimental. Not advice."]))
+
+    def enter_range(self, bar, ctx, now):
+        atm = round(bar.close / self.step) * self.step
+        legs = [(-1, atm + 150, "CE"), (-1, atm - 150, "PE"), (1, atm + 350, "CE"), (1, atm - 350, "PE")]
+        px = self._open("N", "IRON CONDOR", legs, ctx, now, bar)
+        if not px:
+            return
+        p = self.pos
+        self.notify("\n".join([
+            "HEDGED TRADE: IRON CONDOR (hedged short strangle)", f"Expiry {ctx['expiry']:%d %b}", ""] + self._legs_text(legs, px) + [
+            "", f"Credit: Rs {p['credit']:.1f} = Rs {p['credit'] * self.lot:,.0f} per lot",
+            f"Max loss: Rs {p['maxloss']:,.0f} per lot", "",
+            f"Why: NIFTY range-bound, chart score within +/-1 for {C.RANGE_BARS * 5} minutes", f"NIFTY at entry: {bar.close:,.1f}",
+            f"Profit zone: NIFTY between {atm - 150} and {atm + 150}", "", "WHEN TO BOOK",
+            f"Profit: when it costs Rs {p['credit'] * (1 - C.RANGE_TAKE):.1f} to close (+Rs {p['credit'] * C.RANGE_TAKE * self.lot:,.0f})",
+            f"Stop: when it costs Rs {p['credit'] * (1 + C.RANGE_STOP):.1f} to close (-Rs {p['credit'] * C.RANGE_STOP * self.lot:,.0f})",
+            f"Otherwise exit at {C.SQUARE_OFF:%H:%M}", "", "Margin is needed for sold legs.",
+            "PAPER TRADE. Rule N, very few past setups, untested. Not advice."]))
 
     def on_tick(self, spot, ctx, now):
         p = self.pos
         if not p:
             return
-        d = p["d"]
         if now.time() >= C.SQUARE_OFF:
             return self.exit(spot, ctx, now, "time exit")
-        if d * (spot - p["stop"]) <= 0:
+        if p["rule"] == "H" and p["d"] * (spot - p["stop"]) <= 0:
             return self.exit(spot, ctx, now, "stop loss hit")
         if self.last_chk and now - self.last_chk < timedelta(seconds=60):
             return
         self.last_chk = now
-        xp = leg_prices(ctx["quote"], [(-1, p["ks"], p["ty"]), (1, p["kl"], p["ty"])], False)
-        if xp and xp[0] - xp[1] <= p["credit"] * (1 - C.HEDGE_TAKE):
-            self.exit(spot, ctx, now, f"profit booked ({C.HEDGE_TAKE:.0%} of credit)", xp)
+        xp = leg_prices(ctx["quote"], p["legs"], False)
+        if not xp:
+            return
+        cost = -sum(q * x for (q, _, _), x in zip(p["legs"], xp))
+        take = C.HEDGE_TAKE if p["rule"] == "H" else C.RANGE_TAKE
+        if cost <= p["credit"] * (1 - take):
+            self.exit(spot, ctx, now, f"profit booked ({take:.0%} of credit)", xp)
+        elif p["rule"] == "N" and cost >= p["credit"] * (1 + C.RANGE_STOP):
+            self.exit(spot, ctx, now, "stop loss hit", xp)
 
     def exit(self, spot, ctx, now, reason, xp=None):
         p = self.pos
-        xp = xp or leg_prices(ctx["quote"], [(-1, p["ks"], p["ty"]), (1, p["kl"], p["ty"])], False)
-        if not xp:
-            cost = max(p["credit"] - (spot - p["spot"]) * p["d"] * 0.5, 0)        # rough fallback, flagged below
-            note = " (estimated, live price unavailable)"
+        xp = xp or leg_prices(ctx["quote"], p["legs"], False)
+        if xp:
+            cost, note = -sum(q * x for (q, _, _), x in zip(p["legs"], xp)), ""
         else:
-            cost, note = xp[0] - xp[1], ""
+            cost, note = p["credit"], " (live price unavailable, result not known)"
         pnl = round((p["credit"] - cost) * self.lot)
-        row = dict(date=now.date(), structure=p["name"].title(), short=f"{p['ks']}{p['ty']}", long=f"{p['kl']}{p['ty']}",
+        legtxt = " ".join(f"{q:+d}x{k}{t}" for q, k, t in p["legs"])
+        row = dict(date=now.date(), rule=p["rule"], structure=p["name"].title(), legs=legtxt,
                    entry_time=p["time"].strftime("%H:%M:%S"), entry_spot=round(p["spot"], 1), credit=round(p["credit"], 2),
                    exit_time=now.strftime("%H:%M:%S"), exit_spot=round(spot, 1), exit_cost=round(cost, 2), reason=reason + note,
-                   pnl_per_lot=pnl, max_loss_per_lot=round((C.SPREAD_WIDTH - p["credit"]) * self.lot))
+                   pnl_per_lot=pnl, max_loss_per_lot=round(p["maxloss"]))
         self.done.append(row)
         if self.log:
             new = not os.path.exists(self.log)
@@ -410,8 +464,8 @@ class HedgeEngine:
                 if new:
                     w.writeheader()
                 w.writerow(row)
-        self.notify(f"EXIT {p['name']}  {p['ks']}/{p['kl']} {p['ty']}\nReason: {reason}\n\n"
-                    f"Buy back {p['ks']} {p['ty']}, sell {p['kl']} {p['ty']}\n"
+        close = [f"{'Buy back' if q < 0 else 'Sell'} {k} {t}" for q, k, t in p["legs"]]
+        self.notify(f"EXIT {p['name']}\nReason: {reason}\n\nClose all legs: " + ", ".join(close) + "\n\n"
                     f"Credit Rs {p['credit']:.1f} -> cost to close Rs {cost:.1f}{note}\nNIFTY: {p['spot']:,.1f} -> {spot:,.1f}\n\n"
                     f"Result: Rs {pnl:+,} per lot, before charges")
         self.pos, self.cool = None, C.COOLDOWN_BARS
@@ -419,8 +473,8 @@ class HedgeEngine:
     def summary(self):
         if not self.done:
             return ""
-        return (f"\n\nHedged trades (rule H): Rs {sum(r['pnl_per_lot'] for r in self.done):+,} per lot\n"
-                + "\n".join(f"{r['structure']} {r['short']}/{r['long']}: {r['reason']}, Rs {r['pnl_per_lot']:+,}" for r in self.done))
+        return (f"\n\nHedged trades: Rs {sum(r['pnl_per_lot'] for r in self.done):+,} per lot\n"
+                + "\n".join(f"{r['structure']} (rule {r['rule']}): {r['reason']}, Rs {r['pnl_per_lot']:+,}" for r in self.done))
 
 
 # ------------------------------------------------------------------ live feed

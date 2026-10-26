@@ -100,3 +100,8 @@ HEDGE_START = time(9, 45)
 HEDGE_END = time(13, 30)
 HEDGE_MAX_PER_DAY = 2
 HEDGE_TAKE = 0.5   # book when half the credit is earned
+# rule N: range-day Iron Condor (paper)
+RANGE_START = time(10, 30)
+RANGE_BARS = 4
+RANGE_TAKE = 0.30
+RANGE_STOP = 0.50
