@@ -19,3 +19,6 @@ date,rule,structure,legs,entry_time,entry_spot,credit,exit_time,exit_spot,exit_c
 2026-11-06,H,Bull Put Spread,-1x24550PE +1x24350PE,09:46:43,24573.4,71.85,13:44:31,24771.8,34.4,profit booked (50% of credit),2434,8330
 2026-11-09,H,Bear Call Spread,-1x24900CE +1x25100CE,09:45:20,24924.9,78.5,10:42:31,24856.0,38.5,profit booked (50% of credit),2600,7898
 2026-11-09,H,Bear Call Spread,-1x24900CE +1x25100CE,11:00:20,24885.4,49.35,11:29:44,24946.3,74.35,stop loss hit,-1625,9792
+2026-11-11,H,Bull Put Spread,-1x25400PE +1x25200PE,09:45:16,25413.0,79.5,10:09:36,25334.5,92.35,stop loss hit,-835,7832
+2026-11-11,H,Bull Put Spread,-1x25350PE +1x25150PE,10:50:47,25369.1,80.4,12:15:29,25318.9,90.4,stop loss hit,-650,7774
+2026-11-11,N,Iron Condor,-1x25450CE -1x25150PE +1x25650CE +1x24950PE,12:35:40,25290.0,130.25,15:10:07,25117.0,135.8,time exit,-361,4534
