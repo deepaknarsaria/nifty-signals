@@ -27,3 +27,6 @@ date,rule,structure,legs,entry_time,entry_spot,credit,exit_time,exit_spot,exit_c
 2026-11-13,N,Iron Condor,-1x25350CE -1x25050PE +1x25550CE +1x24850PE,10:30:18,25194.5,104.65,15:10:07,25117.0,93.45,time exit,728,6198
 2026-11-16,H,Bull Put Spread,-1x25300PE +1x25100PE,09:46:09,25298.2,58.9,10:30:57,25252.7,78.6,stop loss hit,-1281,9172
 2026-11-16,N,Iron Condor,-1x25350CE -1x25050PE +1x25550CE +1x24850PE,10:50:41,25218.8,63.95,15:10:23,25227.7,53.85,time exit,657,8843
+2026-11-17,H,Bull Put Spread,-1x25350PE +1x25150PE,09:45:14,25347.4,42.35,11:09:02,25422.7,19.55,profit booked (50% of credit),1482,10247
+2026-11-17,H,Bull Put Spread,-1x25450PE +1x25250PE,11:25:14,25445.8,41.7,12:01:25,25495.1,20.8,profit booked (50% of credit),1359,10290
+2026-11-17,N,Iron Condor,-1x25550CE -1x25250PE +1x25750CE +1x25050PE,13:25:12,25376.4,7.15,13:45:59,25415.4,4.9,profit booked (30% of credit),146,12535
