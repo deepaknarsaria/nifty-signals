@@ -79,3 +79,7 @@ date,rule,structure,legs,entry_time,entry_net,exit_time,exit_net,reason,pnl_per_
 2026-11-18,B,Bear Put Spread (debit),+1x25250PE -1x25050PE,10:20:35,80.95,11:35:20,77.6,signal faded,-218,5262,-696
 2026-11-18,B,Bear Call Spread (credit),-1x25250CE +1x25450CE,11:55:12,-77.6,13:57:59,-83.9,profit-protect stop hit,-409,7956,-819
 2026-11-18,B,Bear Put Spread (debit),+1x25250PE -1x25050PE,11:55:12,84.45,13:57:59,78.9,profit-protect stop hit,-361,5489,-819
+2026-11-19,B,Bear Call Spread (credit),-1x25150CE +1x25350CE,09:35:37,-73.75,09:38:08,-83.45,stop loss hit,-631,8206,-1287
+2026-11-19,B,Bear Put Spread (debit),+1x25150PE -1x24950PE,09:35:37,81.35,09:38:08,71.8,stop loss hit,-621,5288,-1287
+2026-11-19,B,Bull Put Spread (credit),-1x25250PE +1x25050PE,09:55:15,-75.7,15:02:19,-32.45,trailing profit booked (+87%),2811,8080,8239
+2026-11-19,B,Bull Call Spread (debit),+1x25250CE -1x25450CE,09:55:15,78.4,15:02:19,130.45,trailing profit booked (+87%),3383,5096,8239
