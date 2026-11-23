@@ -35,3 +35,5 @@ date,rule,structure,legs,entry_time,entry_spot,credit,exit_time,exit_spot,exit_c
 2026-11-19,H,Bull Put Spread,-1x25250PE +1x25050PE,09:55:15,25261.2,75.25,13:48:58,25398.3,37.05,profit booked (50% of credit),2483,8109
 2026-11-20,H,Bull Put Spread,-1x25500PE +1x25300PE,09:50:11,25506.7,82.15,12:02:44,25640.0,40.4,profit booked (50% of credit),2714,7660
 2026-11-20,H,Bull Put Spread,-1x25650PE +1x25450PE,12:20:38,25647.0,75.7,14:15:25,25765.0,37.4,profit booked (50% of credit),2489,8080
+2026-11-23,H,Bear Call Spread,-1x25650CE +1x25850CE,09:55:11,25663.0,66.65,10:46:27,25583.0,33.3,profit booked (50% of credit),2168,8668
+2026-11-23,H,Bear Call Spread,-1x25500CE +1x25700CE,11:05:19,25520.4,60.25,11:08:31,25592.3,90.4,stop loss hit,-1960,9084
