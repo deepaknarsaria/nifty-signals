@@ -95,3 +95,9 @@ date,rule,structure,legs,entry_time,entry_net,exit_time,exit_net,reason,pnl_per_
 2026-11-23,B,Bear Put Spread (debit),+1x25500PE -1x25300PE,12:25:13,50.65,13:21:10,65.2,trailing profit booked (+23%),946,3292,874
 2026-11-23,B,Bear Call Spread (credit),-1x25450CE +1x25650CE,13:40:22,-36.6,14:08:24,-24.35,trailing profit booked (+17%),796,10621,566
 2026-11-23,B,Bear Put Spread (debit),+1x25450PE -1x25250PE,13:40:22,47.1,14:08:24,56.05,trailing profit booked (+17%),582,3061,566
+2026-11-25,B,Bull Put Spread (credit),-1x25750PE +1x25550PE,09:40:11,-79.9,12:10:24,-64.75,trailing profit booked (+28%),985,7806,4599
+2026-11-25,B,Bull Call Spread (debit),+1x25750CE -1x25950CE,09:40:11,91.95,12:10:24,108.45,trailing profit booked (+28%),1072,5977,4599
+2026-11-25,B,Bull Put Spread (credit),-1x25900PE +1x25700PE,12:30:22,-83.65,12:31:12,-90.55,stop loss hit,-449,7563,-1011
+2026-11-25,B,Bull Call Spread (debit),+1x25900CE -1x26100CE,12:30:22,89.05,12:31:12,79.05,stop loss hit,-650,5788,-1011
+2026-11-25,A,Bull Put Spread (credit),-1x25750PE +1x25550PE,14:00:22,-80.3,15:10:07,-71.9,time exit,546,7780,670
+2026-11-25,A,Bull Call Spread (debit),+1x25750CE -1x25950CE,14:00:22,93.1,15:10:07,97.4,time exit,279,6052,670
