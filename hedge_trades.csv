@@ -39,3 +39,4 @@ date,rule,structure,legs,entry_time,entry_spot,credit,exit_time,exit_spot,exit_c
 2026-11-23,H,Bear Call Spread,-1x25500CE +1x25700CE,11:05:19,25520.4,60.25,11:08:31,25592.3,90.4,stop loss hit,-1960,9084
 2026-11-25,H,Bull Put Spread,-1x25750PE +1x25550PE,10:00:13,25773.1,77.75,12:58:08,25700.7,89.95,stop loss hit,-793,7946
 2026-11-25,H,Bear Call Spread,-1x25650CE +1x25850CE,13:15:14,25653.0,89.4,13:30:24,25716.3,98.65,stop loss hit,-601,7189
+2026-11-26,H,Bull Put Spread,-1x25850PE +1x25650PE,10:00:22,25834.5,82.1,15:10:19,25896.0,67.3,time exit,962,7664

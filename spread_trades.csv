@@ -101,3 +101,7 @@ date,rule,structure,legs,entry_time,entry_net,exit_time,exit_net,reason,pnl_per_
 2026-11-25,B,Bull Call Spread (debit),+1x25900CE -1x26100CE,12:30:22,89.05,12:31:12,79.05,stop loss hit,-650,5788,-1011
 2026-11-25,A,Bull Put Spread (credit),-1x25750PE +1x25550PE,14:00:22,-80.3,15:10:07,-71.9,time exit,546,7780,670
 2026-11-25,A,Bull Call Spread (debit),+1x25750CE -1x25950CE,14:00:22,93.1,15:10:07,97.4,time exit,279,6052,670
+2026-11-26,B,Bull Put Spread (credit),-1x25950PE +1x25750PE,11:00:11,-80.1,11:26:38,-90.6,stop loss hit,-682,7794,-1830
+2026-11-26,B,Bull Call Spread (debit),+1x25950CE -1x26150CE,11:00:11,86.85,11:26:38,77.85,stop loss hit,-585,5645,-1830
+2026-11-26,B,Bull Put Spread (credit),-1x25900PE +1x25700PE,11:55:49,-75.4,13:10:43,-83.8,signal faded,-546,8099,-2161
+2026-11-26,B,Bull Call Spread (debit),+1x25900CE -1x26100CE,11:55:49,90.5,13:10:43,82.7,signal faded,-507,5882,-2161
